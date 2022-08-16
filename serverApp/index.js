@@ -271,6 +271,7 @@ io.on("connection", (socket) => {
                                 //misc.dump(mapData[index]);
                                 let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
                                 physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
+                                // fix
                             }
                         }
                     }
