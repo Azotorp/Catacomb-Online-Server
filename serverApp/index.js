@@ -2,7 +2,7 @@ const { readFileSync } = require("fs");
 const { createServer } = require("https");
 const { Server } = require("socket.io");
 const sql = require("./modules/sql.js");
-const generalConfig = require("../config/general_config.json");
+const generalConfig = require("./config/general_config.json");
 const port = process.env.PORT || 3000;
 const misc = require("./modules/misc.js");
 const physics = require("./modules/physics.js");
@@ -21,7 +21,7 @@ let players = {};
 let playerID = 0;
 const io = new Server(httpServer, {
     cors: {
-        origin: "https://" + generalConfig.clientHostDomainName;
+        origin: "https://" + generalConfig.clientHostDomainName,
     }
 });
 
@@ -300,7 +300,7 @@ httpServer.listen(port, async function() {
 physics.world.on("impact",function(evt) {
     let bodyA = evt.bodyA, bodyB = evt.bodyB;
     let id;
-    let body;
+    //let body;
     if ((bodyA.object === "wall" && bodyB.object === "player") || (bodyB.object === "wall" && bodyA.object === "player"))
     {
         let idA = bodyA.objectID;
@@ -317,10 +317,12 @@ physics.world.on("impact",function(evt) {
     }
 });
 
+/*
 async function getMapData()
 {
     mapData = await map.loadMapData(gridSize);
 }
+*/
 
 function dump(input)
 {
