@@ -2,7 +2,7 @@ const misc = require("./misc.js");
 const sql = require("./sql.js");
 const settings = require("./settings.js");
 const physics = require("./physics.js");
-const webSqlPool = sql.webSqlConnect();
+const serverSQLPool = sql.serverSQLConnect();
 
 async function loadMapData()
 {
@@ -10,7 +10,7 @@ async function loadMapData()
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
     return new Promise(function(resolve, reject) {
-        sql.qry(webSqlPool, "select * from `map`", [], function (data) {
+        sql.qry(serverSQLPool, "select * from `map`", [], function (data) {
             resolve(data);
             if (misc.objLength(data) > 0)
             {

@@ -2,7 +2,7 @@ const mysql = require('mysql');
 const mysqlConfig = require("../config/mysql_config.json");
 const misc = require("./misc.js");
 
-let localSqlConnect = function() {
+let serverSQLConnect = function() {
     const pool = mysql.createPool({
         host     : mysqlConfig.local_sql_host,
         user     : mysqlConfig.local_sql_user,
@@ -13,7 +13,7 @@ let localSqlConnect = function() {
     return pool;
 };
 
-let webSqlConnect = function() {
+let clientSQLConnect = function() {
     const pool = mysql.createPool({
         host     : mysqlConfig.web_sql_host,
         user     : mysqlConfig.web_sql_user,
@@ -32,7 +32,6 @@ function dump(input)
 function qry(pool, query_str, query_var, data)
 {
     pool.getConnection((err, connection) => {
-        if(err) throw err;
         connection.query({
             sql: query_str,
             timeout: 40000, // 40s
@@ -78,8 +77,8 @@ function qry2(pool, query_str, query_var, data)
 
 
 module.exports = {
-    webSqlConnect: webSqlConnect,
-    localSqlConnect: localSqlConnect,
+    clientSQLConnect: clientSQLConnect,
+    serverSQLConnect: serverSQLConnect,
     qry: qry,
     qry2: qry2,
 };

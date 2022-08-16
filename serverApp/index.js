@@ -11,7 +11,7 @@ const map = require("./modules/map.js");
 const engine = require("./modules/engine.js");
 const stringy = require("./modules/circular.js");
 const settings = require("./modules/settings.js");
-const webSqlPool = sql.webSqlConnect();
+const serverSQLPool = sql.serverSQLConnect();
 const httpServer = createServer({
     key: readFileSync(generalConfig.sslPrivateKeyPath + "/" + generalConfig.sslPrivateKeyFile), // use let's encrypt to get SSL
     cert: readFileSync(generalConfig.sslCertPath + "/" + generalConfig.sslCertFile), // use let's encrypt to get SSL
@@ -42,7 +42,7 @@ let winCenterY;
 let zoom = 1;
 let startTime = misc.now();
 
-sql.qry(webSqlPool, "select * from `access_levels` order by `level`", [], function (data) {
+sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], function (data) {
 
     for (let k in data)
     {
@@ -76,8 +76,8 @@ io.on("connection", (socket) => {
         winCenterX = data.winCenterX;
         winCenterY = data.winCenterY;
         zoom = data.zoom;
-        sql.qry2(webSqlPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], function() {
-            let instances = 0;//result.open_instances;
+        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], function() {
+            let instances = result.open_instances;
             let access = misc.filterObj2(accessLevels, "level", auth.level);
             if (instances < access.maxInstances || access.maxInstances === -1)
             {
@@ -125,8 +125,8 @@ io.on("connection", (socket) => {
                 };
                 playerData.chunkPos = misc.calcChunkPos(playerData.body.position, gridSize);
                 players[playerID] = playerData;
-                sql.qry(webSqlPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
-                sql.qry(webSqlPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
+                sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
+                sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
 
                 /*
                 let foundTile = [];
@@ -166,12 +166,12 @@ io.on("connection", (socket) => {
                 players: players,
                 playerID: playerID,
             });
-            sql.qry(webSqlPool, "update `user_auth` set `last_ping` = ?, `online` = 'N' where `user_id` = ?", [misc.time(), data.authUserID], function() {});
-            sql.qry(webSqlPool, "update `user_auth` set `open_instances` = `open_instances` - 1 where `user_id` = ?", [data.authUserID], function() {});
-            sql.qry2(webSqlPool, "select `open_instances` from `user_auth` where `user_id` = ?", [data.authUserID], function(result) {
+            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'N' where `user_id` = ?", [misc.time(), data.authUserID], function() {});
+            sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` - 1 where `user_id` = ?", [data.authUserID], function() {});
+            sql.qry2(serverSQLPool, "select `open_instances` from `user_auth` where `user_id` = ?", [data.authUserID], function(result) {
                 if (result < 0)
                 {
-                    sql.qry(webSqlPool, "update `user_auth` set `open_instances` = 0 where `user_id` = ?", [data.authUserID], function() {});
+                    sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = 0 where `user_id` = ?", [data.authUserID], function() {});
                 }
             });
         }
@@ -182,7 +182,7 @@ io.on("connection", (socket) => {
         let id = msg.id;
         if (misc.isDefined(players[id]))
         {
-            sql.qry(webSqlPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), players[id].authUserID], function() {});
+            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), players[id].authUserID], function() {});
             if (func === "run")
             {
                 players[id].isRunning = true;
@@ -314,7 +314,7 @@ physics.world.on("impact",function(evt) {
 httpServer.listen(socketIOPort, socketIOHost, async function() {
     dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
     serverRunning = true;
-    sql.qry(webSqlPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
+    sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
     //mapData = await map.loadMapData(gridSize);
 });
 
