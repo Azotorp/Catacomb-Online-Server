@@ -1,0 +1,10 @@
+{
+  "web_sql_host": "localhost",
+  "web_sql_user": "user",
+  "web_sql_pass": "pass",
+  "web_sql_db": "db",
+  "local_sql_host": "localhost",
+  "local_sql_user": "user",
+  "local_sql_pass": "pass",
+  "local_sql_db": "db"
+}

@@ -1,0 +1,8 @@
+{
+  "clientHostDomainName": "domain.com",
+  "sslCertPath": "../ssl",
+  "sslPrivateKeyPath": "../ssl",
+  "sslCertFile": "privkey1.pem",
+  "sslPrivateKeyFile": "cert1.pem",
+  "sslPrivateKeyPassPhrase": "somepassphrase",
+}
