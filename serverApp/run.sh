@@ -7,10 +7,10 @@ echo -e "\e[33mType \e[95mstop \e[33mto close & save server, or Press \e[95mCTRL
 sleep 1
 clear
 node index.js
-i=10
+i=30
 echo -e "\e[33mPress \e[95mCTRL + C \e[33mto exit run script.\e[0m\n"
 while [ $i -gt 0 ]; do
-	if [ "$i" -eq 10 ]; then
+	if [ "$i" -ge 10 ]; then
 		COLOR="\e[38;5;12m"
 	fi	
 	if [ "$i" -eq 9 ]; then

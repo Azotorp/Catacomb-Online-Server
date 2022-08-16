@@ -195,7 +195,6 @@ function pickDir(thisMaze, pos, size, padding)
     }
 }
 
-
 module.exports = {
     generateMap: generateMap,
     loadMapData: loadMapData,

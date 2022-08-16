@@ -3,7 +3,8 @@ const { createServer } = require("https");
 const { Server } = require("socket.io");
 const sql = require("./modules/sql.js");
 const generalConfig = require("./config/general_config.json");
-const port = process.env.PORT || 3000;
+const socketIOPort = generalConfig.socketIOPort;
+const socketIOHost = generalConfig.socketIOHost;
 const misc = require("./modules/misc.js");
 const physics = require("./modules/physics.js");
 const map = require("./modules/map.js");
@@ -230,6 +231,7 @@ io.on("connection", (socket) => {
             }
         }
     });
+
     socket.on('updateServer', msg => {  // MAIN LOOP
         let id = msg.id;
         let mouse = {x: msg.mouse.x, y: msg.mouse.y};
@@ -289,14 +291,6 @@ io.on("connection", (socket) => {
     });
 });
 
-httpServer.listen(port, async function() {
-    dump(`Socket.IO server running at http://localhost:${port}/`);
-    serverRunning = true;
-    sql.qry(webSqlPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
-    //mapData = await map.loadMapData(gridSize);
-});
-
-
 physics.world.on("impact",function(evt) {
     let bodyA = evt.bodyA, bodyB = evt.bodyB;
     let id;
@@ -317,12 +311,12 @@ physics.world.on("impact",function(evt) {
     }
 });
 
-/*
-async function getMapData()
-{
-    mapData = await map.loadMapData(gridSize);
-}
-*/
+httpServer.listen(socketIOPort, socketIOHost, async function() {
+    dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
+    serverRunning = true;
+    sql.qry(webSqlPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
+    //mapData = await map.loadMapData(gridSize);
+});
 
 function dump(input)
 {

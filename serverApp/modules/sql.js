@@ -2,23 +2,23 @@ const mysql = require('mysql');
 const mysqlConfig = require("../config/mysql_config.json");
 const misc = require("./misc.js");
 
-let webSqlConnect = function() {
-    const pool = mysql.createPool({
-        host     : mysqlConfig.web_sql_host,
-        user     : mysqlConfig.web_sql_user,
-        password : mysqlConfig.web_sql_pass,
-        database : mysqlConfig.web_sql_db,
-        charset : 'utf8mb4'
-    });
-    return pool;
-};
-
 let localSqlConnect = function() {
     const pool = mysql.createPool({
         host     : mysqlConfig.local_sql_host,
         user     : mysqlConfig.local_sql_user,
         password : mysqlConfig.local_sql_pass,
         database : mysqlConfig.local_sql_db,
+        charset : 'utf8mb4'
+    });
+    return pool;
+};
+
+let webSqlConnect = function() {
+    const pool = mysql.createPool({
+        host     : mysqlConfig.web_sql_host,
+        user     : mysqlConfig.web_sql_user,
+        password : mysqlConfig.web_sql_pass,
+        database : mysqlConfig.web_sql_db,
         charset : 'utf8mb4'
     });
     return pool;
