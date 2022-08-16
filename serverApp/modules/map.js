@@ -25,7 +25,7 @@ async function loadMapData()
                             y: tiles[i].chunkPosY,
                         };
                         let pos = misc.calcGlobalPos(chunkPos, gridSize);
-                        physics.newWallBody(id, pos, gridSize, gridSize);
+                        //physics.newWallBody(id, pos, gridSize, gridSize);
                    }
                 }
             }
@@ -39,6 +39,7 @@ async function generateMap(dimX, dimY, orgX = false, orgY = false)
     let SETTINGS = await settings.qrySettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
+
     if (dimX % 2 === 0)
         dimX++;
     if (dimY % 2 === 0)

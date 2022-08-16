@@ -32,7 +32,7 @@ let realWorldScale = 0.00761461306 / playerScale; // meters per pixel
 let accessLevels = {};
 let accessLevelsIds = [];
 let frameTickTime;
-let FPS;
+let FPS = 60;
 let mapData = [];
 let SETTINGS = {}
 let gridSize;
@@ -63,20 +63,11 @@ io.on("connection", (socket) => {
     dump("User "+uuid+" connected.");
 
     socket.on("clientReady", async function(data) {
-        SETTINGS = await settings.qrySettings();
-        playerScale = parseFloat(SETTINGS.playerScale);
-        gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
-        realWorldScale = 0.00761461306 / playerScale; // meters per pixel
-        mapSize = {
-            x: parseInt(SETTINGS.mapWidth),
-            y: parseInt(SETTINGS.mapHeight),
-        };
-        mapData = await map.generateMap(mapSize.x, mapSize.y);
         let auth = data.auth;
         winCenterX = data.winCenterX;
         winCenterY = data.winCenterY;
         zoom = data.zoom;
-        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], function() {
+        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], function(result) {
             let instances = result.open_instances;
             let access = misc.filterObj2(accessLevels, "level", auth.level);
             if (instances < access.maxInstances || access.maxInstances === -1)
@@ -147,7 +138,7 @@ io.on("connection", (socket) => {
                  */
                 io.emit("newPlayer", {playerData: playerData, players: players});//, mapData: foundTile});
                 playerID++;
-                dump(misc.now() - startTime);
+                //dump(misc.now() - startTime);
             } else {
                 io.emit("maxInstances", uuid);
             }
@@ -236,7 +227,7 @@ io.on("connection", (socket) => {
         let id = msg.id;
         let mouse = {x: msg.mouse.x, y: msg.mouse.y};
         frameTickTime = msg.frameTickTime;
-        FPS = msg.fps;
+        FPS = 60;//msg.fps;
         zoom = msg.zoom;
         winCenterX = msg.winCenterX;
         winCenterY = msg.winCenterY;
@@ -269,15 +260,18 @@ io.on("connection", (socket) => {
                 {
                     let x = playerChunkPos.x + sx + Math.floor(mapSize.x / 2);
                     let y = playerChunkPos.y + sy + Math.floor(mapSize.y / 2);
-                    //if (x > 0 && y > 0 && x < mapSize.x && y < mapSize.y)
-                    let index = misc.getIndexFromChunkPos({x: x, y: y}, mapSize);
-                    if (misc.isDefined(mapData[index]))
+                    if (x > 0 && y > 0 && x < mapSize.x && y < mapSize.y)
                     {
-                        foundTile.push(mapData[index]);
-                        if (mapData[index].tile === "wall")
+                        let index = misc.getIndexFromChunkPos({x: x, y: y}, mapSize);
+                        if (misc.isDefined(mapData[index]))
                         {
-                            let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
-                            physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
+                            foundTile.push(mapData[index]);
+                            if (mapData[index].tile === "wall")
+                            {
+                                //misc.dump(mapData[index]);
+                                let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
+                                physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
+                            }
                         }
                     }
                 }
@@ -315,11 +309,34 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
     serverRunning = true;
     sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
-    //mapData = await map.loadMapData(gridSize);
+
+    SETTINGS = await settings.qrySettings();
+    playerScale = parseFloat(SETTINGS.playerScale);
+    gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
+    realWorldScale = 0.00761461306 / playerScale; // meters per pixel
+    mapSize = {
+        x: parseInt(SETTINGS.mapWidth),
+        y: parseInt(SETTINGS.mapHeight),
+    };
+
+
+    let genMapData = await map.generateMap(mapSize.x, mapSize.y);
+    let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
+    let qry = [];
+    for (let k in genMapData)
+    {
+        qry.push("("+genMapData[k].id+", "+genMapData[k].chunkPosX+", "+genMapData[k].chunkPosY+", '"+genMapData[k].tile+"')");
+    }
+    //dump(ins+"\n"+qry.join(",\n"));
+    //sql.qry(serverSQLPool, ins+qry.join(","), [], function(data) {
+        //dump(data);
+    //});
+    mapData = await map.loadMapData(gridSize);
+
 });
 
 function dump(input)
 {
     console.log(input);
-    io.emit("serverDump", stringy.stringify(input));
+    //io.emit("serverDump", stringy.stringify(input));
 }
