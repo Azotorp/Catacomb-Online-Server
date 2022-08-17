@@ -41,7 +41,7 @@ let winCenterX;
 let winCenterY;
 let zoom = 1;
 let startTime = misc.now();
-
+let walls = [];
 sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], function (data) {
 
     for (let k in data)
@@ -119,24 +119,8 @@ io.on("connection", (socket) => {
                 sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
                 sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
 
-                /*
-                let foundTile = [];
-                let maxChunkLoadX = 5;
-                let maxChunkLoadY = 5;
-                let playerChunkPos = {x: players[playerID].chunkPos[0], y: players[playerID].chunkPos[1]};
-                for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
-                {
-                    for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
-                    {
-                        let x = playerChunkPos.x + sx;
-                        let y = playerChunkPos.y + sy;
-                        let index = misc.getIndexFromChunkPos({x: x, y: y}, mapSize);
-                        foundTile.push(mapData[index]);
-                    }
-                }
 
-                 */
-                io.emit("newPlayer", {playerData: playerData, players: players});//, mapData: foundTile});
+                io.emit("newPlayer", {playerData: playerData, players: players});
                 playerID++;
                 //dump(misc.now() - startTime);
             } else {
@@ -223,7 +207,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on('updateServer', msg => {  // MAIN LOOP
+    socket.on('updateServer', async function(msg) {  // MAIN LOOP
         let id = msg.id;
         let mouse = {x: msg.mouse.x, y: msg.mouse.y};
         frameTickTime = msg.frameTickTime;
@@ -231,7 +215,7 @@ io.on("connection", (socket) => {
         zoom = msg.zoom;
         winCenterX = msg.winCenterX;
         winCenterY = msg.winCenterY;
-        let foundTile = [];
+        let foundTile = {};
         if (misc.isDefined(players[id]))
         {
             let pos = {x: physics.playerBody[id].position[0], y: physics.playerBody[id].position[1]};
@@ -258,31 +242,43 @@ io.on("connection", (socket) => {
             {
                 for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
                 {
-                    let x = playerChunkPos.x + sx + Math.floor(mapSize.x / 2);
-                    let y = playerChunkPos.y + sy + Math.floor(mapSize.y / 2);
-                    if (x > 0 && y > 0 && x < mapSize.x && y < mapSize.y)
+                    let x = playerChunkPos.x + sx;
+                    let y = playerChunkPos.y + sy;
+                    if (misc.isDefined(mapData[misc.getXYKey({x: x, y: y})]))
                     {
-                        let index = misc.getIndexFromChunkPos({x: x, y: y}, mapSize);
-                        if (misc.isDefined(mapData[index]))
+                        let index = misc.getXYKey({x: x, y: y});
+                        let tileData = mapData[index];
+                        tileData.chunkLoaded = true;
+                        foundTile[index] = tileData;
+                        //dump(tileData);
+                        if (tileData.tile === "wall")
                         {
-                            foundTile.push(mapData[index]);
-                            if (mapData[index].tile === "wall")
-                            {
-                                //misc.dump(mapData[index]);
-                                let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
-                                physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
-                                // fix
-                            }
+                            let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
+                            physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
                         }
+                    } else {
+                        mapData = await map.generateMap({x: x, y: y}, mapData, gridSize);
                     }
                 }
             }
+
             io.emit("serverUpdate", {
                 mapData: foundTile,
                 players: players,
             });
         }
         physics.world.step(1 / FPS, frameTickTime / 1000, 2);
+    });
+
+    socket.on('deRenderMap', function(data) {
+        for (let i in data)
+        {
+            let deRenderedID = mapData[data[i]].id;
+            mapData[data[i]].chunkLoaded = false;
+            mapData[data[i]].chunkRendered = false;
+            physics.world.removeBody(deRenderedID);
+
+        }
     });
 });
 
@@ -302,7 +298,6 @@ physics.world.on("impact",function(evt) {
             id = idB;
             //body = bodyB;
         }
-        dump(mapData[id]);
     }
 });
 
@@ -321,6 +316,7 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     };
 
 
+    /*
     let genMapData = await map.generateMap(mapSize.x, mapSize.y);
     let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
     let qry = [];
@@ -328,9 +324,10 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     {
         qry.push("("+genMapData[k].id+", "+genMapData[k].chunkPosX+", "+genMapData[k].chunkPosY+", '"+genMapData[k].tile+"')");
     }
+    */
     //dump(ins+"\n"+qry.join(",\n"));
     //sql.qry(serverSQLPool, ins+qry.join(","), [], function(data) {
-        //dump(data);
+    //dump(data);
     //});
     mapData = await map.loadMapData(gridSize);
 

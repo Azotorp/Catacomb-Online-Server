@@ -226,6 +226,42 @@ function distance(obj1, obj2 = false)
     }
 }
 
+function getXYKey(pos)
+{
+    let xyKey = "";
+    if (pos.x >= 0)
+    {
+        xyKey += "p" + pos.x;
+    } else {
+        xyKey += "n" + Math.abs(pos.x);
+    }
+    if (pos.y >= 0)
+    {
+        xyKey += "_p" + pos.y;
+    } else {
+        xyKey += "_n" + Math.abs(pos.y);
+    }
+    return xyKey;
+}
+
+function getXYPos(xyKey)
+{
+    let data = xyKey.split("_");
+    let xData = data[0];
+    let yData = data[1];
+    let x = parseInt(xData.substr(1));
+    if (xData.substr(0, 1) === "n")
+    {
+        x = parseInt(xData.substr(1)) * -1;
+    }
+    let y = parseInt(yData.substr(1));
+    if (yData.substr(0, 1) === "n")
+    {
+        y = parseInt(yData.substr(1)) * -1;
+    }
+    return {x: x, y: y};
+}
+
 module.exports = {
     dump: dump,
     rng: rng,
@@ -250,4 +286,6 @@ module.exports = {
     angleDist: angleDist,
     angleMoveDir: angleMoveDir,
     distance: distance,
+    getXYKey: getXYKey,
+    getXYPos: getXYPos,
 };

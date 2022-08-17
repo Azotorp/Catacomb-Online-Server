@@ -11,30 +11,75 @@ async function loadMapData()
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
     return new Promise(function(resolve, reject) {
         sql.qry(serverSQLPool, "select * from `map`", [], function (data) {
-            resolve(data);
             if (misc.objLength(data) > 0)
             {
                 let tiles = data;
+                let tilesData = {};
                 for (let i in tiles)
                 {
-                    if (tiles[i].tile === "wall")
-                    {
                         let id = tiles[i].id;
                         let chunkPos = {
                             x: tiles[i].chunkPosX,
                             y: tiles[i].chunkPosY,
                         };
-                        let pos = misc.calcGlobalPos(chunkPos, gridSize);
+
+                        tiles[i].cordId = chunkPos.x + "_" + chunkPos.y;
+                        tiles[i].globalPos = misc.calcGlobalPos(chunkPos, gridSize);
+                        let xyKey = misc.getXYKey(chunkPos);
+                        tiles[i].xyKey = xyKey;
+                        tilesData[xyKey] = tiles[i];
+                        tiles[i].chunkLoaded = false;
+                        tiles[i].chunkRendered = false;
+                    if (tiles[i].tile === "wall")
+                    {
                         //physics.newWallBody(id, pos, gridSize, gridSize);
-                   }
+                    }
                 }
+                resolve(tilesData);
             }
         });
     });
 }
 
-//function generateMap(size, start = {x: 1, y: 1}, padding = {x: 0, y: 0}, thickness = {floors: 1, walls: 1}, minSameDir = 0, maxSameDir = 0)
-async function generateMap(dimX, dimY, orgX = false, orgY = false)
+async function generateMap(pos, mapData, gridSize, playerUserID, step = 0)
+{
+    return new Promise(function(resolve, reject) {
+        for (let sy = -1; sy <= 1; sy++)
+        {
+            for (let sx = -1; sx <= 1; sx++)
+            {
+                let sPos = {x: pos.x + sx, y: pos.y + sy};
+                let xyKey = misc.getXYKey(sPos);
+                if (!misc.isDefined(mapData[xyKey]))
+                {
+                    mapData[xyKey] = {
+                        chunkPosX: sPos.x,
+                        chunkPosY: sPos.y,
+                    };
+                    mapData[xyKey].cordId = sPos.x + "_" + sPos.y;
+                    mapData[xyKey].globalPos = misc.calcGlobalPos(sPos, gridSize);
+                    mapData[xyKey].xyKey = xyKey;
+                    mapData[xyKey].chunkLoaded = false;
+                    mapData[xyKey].chunkRendered = false;
+                    if (misc.rng(0, 100, 3) <= 10)
+                    {
+                        mapData[xyKey].tile = "wall";
+                    } else {
+                        mapData[xyKey].tile = "floor";
+                    }
+                    //misc.dump(mapData[xyKey]);
+                    sql.qry(serverSQLPool, "INSERT IGNORE INTO `map` (`chunkPosX`, `chunkPosY`, `tile`, `seededBy`) VALUES (?, ?, ?, ?)", [sPos.x, sPos.y, mapData[xyKey].tile, playerUserID], function(ins) {
+                        let id = ins.insertId;
+                        mapData[xyKey].id = id;
+                    });
+                }
+            }
+        }
+        resolve(mapData);
+    });
+}
+
+async function generateMaze(dimX, dimY, orgX = false, orgY = false)
 {
     let SETTINGS = await settings.qrySettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
@@ -198,5 +243,6 @@ function pickDir(thisMaze, pos, size, padding)
 
 module.exports = {
     generateMap: generateMap,
+    generateMaze: generateMaze,
     loadMapData: loadMapData,
 };
