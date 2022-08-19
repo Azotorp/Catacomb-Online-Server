@@ -20,6 +20,8 @@ const httpServer = createServer({
 
 let players = {};
 let playerID = 0;
+let socket = {};
+
 const io = new Server(httpServer, {
     cors: {
         origin: "https://" + generalConfig.clientHostDomainName,
@@ -31,8 +33,8 @@ let playerScale = 1;
 let realWorldScale = 0.00761461306 / playerScale; // meters per pixel
 let accessLevels = {};
 let accessLevelsIds = [];
-let frameTickTime;
 let FPS = 60;
+let frameTickTime = 1000 / FPS;
 let mapData = [];
 let SETTINGS = {}
 let gridSize;
@@ -40,8 +42,9 @@ let mapSize = {};
 let winCenterX;
 let winCenterY;
 let zoom = 1;
-let startTime = misc.now();
+let lastFrameTime = misc.now();
 let walls = [];
+let newMapID = 0;
 sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], function (data) {
 
     for (let k in data)
@@ -58,16 +61,89 @@ sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], fun
     }
 });
 
+physics.world.on("impact",function(evt) {
+    let bodyA = evt.bodyA, bodyB = evt.bodyB;
+    let id;
+    let body;
+    if ((bodyA.object === "wall" && bodyB.object === "player") || (bodyB.object === "wall" && bodyA.object === "player"))
+    {
+        let idA = bodyA.objectID;
+        let idB = bodyB.objectID;
+        if (bodyA.object === "wall")
+        {
+            id = idA;
+            body = bodyA;
+        } else {
+            id = idB;
+            body = bodyB;
+        }
+        dump(body.objectID);
+    }
+});
+
+httpServer.listen(socketIOPort, socketIOHost, async function() {
+    dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
+    serverRunning = true;
+    sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
+
+    SETTINGS = await settings.qrySettings();
+    playerScale = parseFloat(SETTINGS.playerScale);
+    gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
+    realWorldScale = 0.00761461306 / playerScale; // meters per pixel
+    mapSize = {
+        x: parseInt(SETTINGS.mapWidth),
+        y: parseInt(SETTINGS.mapHeight),
+    };
+
+    /*
+    let genMapData = await map.generateMap(mapSize.x, mapSize.y);
+    let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
+    let qry = [];
+    for (let k in genMapData)
+    {
+        qry.push("("+genMapData[k].id+", "+genMapData[k].chunkPosX+", "+genMapData[k].chunkPosY+", '"+genMapData[k].tile+"')");
+    }
+    */
+    //dump(ins+"\n"+qry.join(",\n"));
+    //sql.qry(serverSQLPool, ins+qry.join(","), [], function(data) {
+    //dump(data);
+    //});
+});
+
 io.on("connection", (socket) => {
     let uuid = misc.sha256(socket.id);
     dump("User "+uuid+" connected.");
+    socket.on('disconnect', () => {
+        dump("User "+uuid+" disconnected.");
+        let data = misc.filterObj2(players, "uuid", uuid);
+        if (misc.objLength(data) > 0)
+        {
+            let playerID = data.playerID;
+            physics.world.removeBody(physics.playerBody[playerID]);
+            delete physics.playerBody[playerID];
+            delete players[playerID];
+            delete mapData[playerID];
+            io.emit("userDisconnect", {
+                players: players,
+                playerID: playerID,
+            });
+            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'N' where `user_id` = ?", [misc.time(), data.authUserID], function() {});
+            sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` - 1 where `user_id` = ?", [data.authUserID], function() {});
+            sql.qry2(serverSQLPool, "select `open_instances` from `user_auth` where `user_id` = ?", [data.authUserID], function(result) {
+                if (result < 0)
+                {
+                    sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = 0 where `user_id` = ?", [data.authUserID], function() {});
+                }
+            });
+        }
+    });
 
     socket.on("clientReady", async function(data) {
         let auth = data.auth;
         winCenterX = data.winCenterX;
         winCenterY = data.winCenterY;
         zoom = data.zoom;
-        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], function(result) {
+        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], async function(result) {
             let instances = result.open_instances;
             let access = misc.filterObj2(accessLevels, "level", auth.level);
             if (instances < access.maxInstances || access.maxInstances === -1)
@@ -118,8 +194,11 @@ io.on("connection", (socket) => {
                 players[playerID] = playerData;
                 sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
                 sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
-
-
+                let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
+                let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
+                dump(data.auth);
+                mapData[playerID] = await map.loadMapData({x: players[playerID].chunkPos[0], y: players[playerID].chunkPos[1]}, {x: maxChunkLoadX, y: maxChunkLoadY});
+                dump("New Player: "+playerID);
                 io.emit("newPlayer", {playerData: playerData, players: players});
                 playerID++;
                 //dump(misc.now() - startTime);
@@ -129,30 +208,7 @@ io.on("connection", (socket) => {
         });
     });
 
-    socket.on('disconnect', () => {
-        dump("User "+uuid+" disconnected.");
-        let data = misc.filterObj2(players, "uuid", uuid);
-        if (misc.objLength(data) > 0)
-        {
-            let playerID = data.playerID;
-            physics.world.removeBody(physics.playerBody[playerID]);
-            delete players[playerID];
-            io.emit("userDisconnect", {
-                players: players,
-                playerID: playerID,
-            });
-            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'N' where `user_id` = ?", [misc.time(), data.authUserID], function() {});
-            sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` - 1 where `user_id` = ?", [data.authUserID], function() {});
-            sql.qry2(serverSQLPool, "select `open_instances` from `user_auth` where `user_id` = ?", [data.authUserID], function(result) {
-                if (result < 0)
-                {
-                    sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = 0 where `user_id` = ?", [data.authUserID], function() {});
-                }
-            });
-        }
-    });
-
-    socket.on('updatePos', msg => {
+    socket.on('updatePos', async function(msg) {
         let func = msg.func;
         let id = msg.id;
         if (misc.isDefined(players[id]))
@@ -210,128 +266,125 @@ io.on("connection", (socket) => {
     socket.on('updateServer', async function(msg) {  // MAIN LOOP
         let id = msg.id;
         let mouse = {x: msg.mouse.x, y: msg.mouse.y};
-        frameTickTime = msg.frameTickTime;
         FPS = 60;//msg.fps;
-        zoom = msg.zoom;
+        frameTickTime = 1000 / FPS;//msg.frameTickTime;
+        zoom = msg.worldZoom;
         winCenterX = msg.winCenterX;
         winCenterY = msg.winCenterY;
-        let foundTile = {};
-        if (misc.isDefined(players[id]))
-        {
-            let pos = {x: physics.playerBody[id].position[0], y: physics.playerBody[id].position[1]};
-            let mouseAngle = misc.angle(pos, mouse);
-            let angleDist = misc.angleDist(mouseAngle, physics.playerBody[id].angle);
-            let turnDir = misc.angleMoveDir(mouseAngle, physics.playerBody[id].angle);
-            if (misc.toDeg(angleDist) > players[id].turnSpeed / FPS)
-            {
-                physics.playerBody[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
-            } else {
-                physics.playerBody[id].angularVelocity = 0;
-                physics.playerBody[id].angle = mouseAngle;
-                //players[id].stopPlayerTurn = true;
-                //setTimeout(function () {
-                //players[id].stopPlayerTurn = false;
-                //}, 50);
-            }
-            //getMapData(gridSize);
-            engine.updatePlayersPos(players, FPS, gridSize);
-            let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
-            let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
-            let playerChunkPos = {x: players[id].chunkPos[0], y: players[id].chunkPos[1]};
-            for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
-            {
-                for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
-                {
-                    let x = playerChunkPos.x + sx;
-                    let y = playerChunkPos.y + sy;
-                    if (misc.isDefined(mapData[misc.getXYKey({x: x, y: y})]))
-                    {
-                        let index = misc.getXYKey({x: x, y: y});
-                        let tileData = mapData[index];
-                        tileData.chunkLoaded = true;
-                        foundTile[index] = tileData;
-                        //dump(tileData);
-                        if (tileData.tile === "wall")
-                        {
-                            let wallBody = misc.calcGlobalPos({x: mapData[index].chunkPosX, y: mapData[index].chunkPosY}, gridSize);
-                            physics.newWallBody(mapData[index].id, wallBody, gridSize, gridSize);
-                        }
-                    } else {
-                        mapData = await map.generateMap({x: x, y: y}, mapData, gridSize);
-                    }
-                }
-            }
-
-            io.emit("serverUpdate", {
-                mapData: foundTile,
-                players: players,
-            });
-        }
-        physics.world.step(1 / FPS, frameTickTime / 1000, 2);
+        await loopWorld(id, mouse, FPS, frameTickTime);
     });
 
     socket.on('deRenderMap', function(data) {
-        for (let i in data)
+        let deRenderTile = data.deRenderTile;
+        let id = parseInt(data.playerID);
+        for (let i in deRenderTile)
         {
-            let deRenderedID = mapData[data[i]].id;
-            mapData[data[i]].chunkLoaded = false;
-            mapData[data[i]].chunkRendered = false;
-            physics.world.removeBody(deRenderedID);
-
+            if (misc.isDefined(mapData[id][deRenderTile[i]]))
+            {
+                let deRenderedID = deRenderTile[i];
+                mapData[id][deRenderTile[i]].chunkLoaded = false;
+                mapData[id][deRenderTile[i]].chunkRendered = false;
+                mapData[id][deRenderTile[i]].bodyID = false;
+                if (misc.isDefined(physics.wallBody[deRenderedID]))
+                {
+                    physics.world.removeBody(physics.wallBody[deRenderedID]);
+                    physics.wallBody[deRenderedID];
+                }
+            }
         }
     });
+
 });
 
-physics.world.on("impact",function(evt) {
-    let bodyA = evt.bodyA, bodyB = evt.bodyB;
-    let id;
-    //let body;
-    if ((bodyA.object === "wall" && bodyB.object === "player") || (bodyB.object === "wall" && bodyA.object === "player"))
+async function loopWorld(id, mouse, FPS, frameTickTime)
+{
+    let foundTile = {};
+    let mapGenData = false;
+    let mapDataSent;
+    if (misc.isDefined(players[id]))
     {
-        let idA = bodyA.objectID;
-        let idB = bodyB.objectID;
-        if (bodyA.object === "wall")
+        let pos = {x: physics.playerBody[id].position[0], y: physics.playerBody[id].position[1]};
+        let mouseAngle = misc.angle(pos, mouse);
+        let angleDist = misc.angleDist(mouseAngle, physics.playerBody[id].angle);
+        let turnDir = misc.angleMoveDir(mouseAngle, physics.playerBody[id].angle);
+        if (misc.toDeg(angleDist) > players[id].turnSpeed / FPS)
         {
-            id = idA;
-            //body = bodyA;
+            physics.playerBody[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
         } else {
-            id = idB;
-            //body = bodyB;
+            physics.playerBody[id].angularVelocity = 0;
+            physics.playerBody[id].angle = mouseAngle;
         }
+        let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
+        let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
+        let playerChunkPos = {x: players[id].chunkPos[0], y: players[id].chunkPos[1]};
+        mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
+        for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
+        {
+            for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
+            {
+                let x = playerChunkPos.x + sx;
+                let y = playerChunkPos.y + sy;
+                if (misc.isDefined(mapData[id][misc.getXYKey({x: x, y: y})]))
+                {
+                    let index = misc.getXYKey({x: x, y: y});
+                    let tileData = mapData[id][index];
+                    tileData.chunkLoaded = true;
+                    foundTile[index] = tileData;
+                    if (tileData.tile === "wall")
+                    {
+                        let wallBody = misc.calcGlobalPos({x: mapData[id][index].chunkPosX, y: mapData[id][index].chunkPosY}, gridSize);
+                        mapData[id][index].bodyID = index;
+                        physics.newWallBody(index, wallBody, gridSize, gridSize);
+                        if (index === "p0_p0")
+                        {
+                            //dump("wall");
+                        }
+                    } else {
+                        if (index === "p0_p0")
+                        {
+                            //dump("floor");
+                        }
+                        if (misc.isDefined(physics.wallBody[index]))
+                        {
+                            physics.world.removeBody(physics.wallBody[index]);
+                            delete physics.wallBody[index];
+                        }
+                    }
+                } else {
+                    //dump(newMapID);
+                    let gen = await map.generateMap({x: x, y: y}, mapData[id], gridSize);
+                    mapGenData = gen.mapData;
+                }
+            }
+        }
+        engine.updatePlayerPos(players, id, FPS, gridSize);
+        mapDataSent = foundTile;
+        if (mapGenData !== false)
+        {
+            mapDataSent = {
+                ...foundTile,
+                ...mapGenData,
+            };
+        }
+
+        io.emit("serverUpdate", {
+            mapData: mapDataSent,
+            players: players,
+            playerID: id,
+        });
     }
-});
+    lastFrameTime = misc.now();
+}
 
-httpServer.listen(socketIOPort, socketIOHost, async function() {
-    dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
-    serverRunning = true;
-    sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
+setImmediate(gameLoop);
 
-    SETTINGS = await settings.qrySettings();
-    playerScale = parseFloat(SETTINGS.playerScale);
-    gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
-    realWorldScale = 0.00761461306 / playerScale; // meters per pixel
-    mapSize = {
-        x: parseInt(SETTINGS.mapWidth),
-        y: parseInt(SETTINGS.mapHeight),
-    };
-
-
-    /*
-    let genMapData = await map.generateMap(mapSize.x, mapSize.y);
-    let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
-    let qry = [];
-    for (let k in genMapData)
-    {
-        qry.push("("+genMapData[k].id+", "+genMapData[k].chunkPosX+", "+genMapData[k].chunkPosY+", '"+genMapData[k].tile+"')");
-    }
-    */
-    //dump(ins+"\n"+qry.join(",\n"));
-    //sql.qry(serverSQLPool, ins+qry.join(","), [], function(data) {
-    //dump(data);
-    //});
-    mapData = await map.loadMapData(gridSize);
-
-});
+function gameLoop() {
+    //dump(misc.rng(0,100));
+    physics.world.step(1 / FPS, frameTickTime / 1000, 2);
+    setTimeout(function () {
+        setImmediate(gameLoop);
+    }, frameTickTime);
+}
 
 function dump(input)
 {

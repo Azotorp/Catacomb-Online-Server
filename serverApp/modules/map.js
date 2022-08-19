@@ -4,46 +4,68 @@ const settings = require("./settings.js");
 const physics = require("./physics.js");
 const serverSQLPool = sql.serverSQLConnect();
 
-async function loadMapData()
+async function loadMapData(pos =  {x: 0, y: 0}, radius= {x: 0, y: 0})
 {
     let SETTINGS = await settings.qrySettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
+    let tilesData = {};
     return new Promise(function(resolve, reject) {
-        sql.qry(serverSQLPool, "select * from `map`", [], function (data) {
+        let sqlQry = "select * from `map`";
+        let param = [];
+        if (radius.x > 0 && radius.y > 0)
+        {
+            sqlQry += " where `chunkPosX` >= ? and `chunkPosX` <= ? and `chunkPosY` >= ? and `chunkPosY` <= ?";
+            param.push(pos.x - radius.x);
+            param.push(pos.x + radius.x);
+            param.push(pos.y - radius.y);
+            param.push(pos.y + radius.y);
+        }
+        //misc.dump(pos);
+        //misc.dump(radius);
+
+        sql.qry(serverSQLPool, sqlQry, param, function (data, error) {
             if (misc.objLength(data) > 0)
             {
                 let tiles = data;
-                let tilesData = {};
                 for (let i in tiles)
                 {
-                        let id = tiles[i].id;
-                        let chunkPos = {
-                            x: tiles[i].chunkPosX,
-                            y: tiles[i].chunkPosY,
-                        };
+                    let id = tiles[i].id;
+                    let chunkPos = {
+                        x: tiles[i].chunkPosX,
+                        y: tiles[i].chunkPosY,
+                    };
 
-                        tiles[i].cordId = chunkPos.x + "_" + chunkPos.y;
-                        tiles[i].globalPos = misc.calcGlobalPos(chunkPos, gridSize);
-                        let xyKey = misc.getXYKey(chunkPos);
-                        tiles[i].xyKey = xyKey;
-                        tilesData[xyKey] = tiles[i];
-                        tiles[i].chunkLoaded = false;
-                        tiles[i].chunkRendered = false;
-                    if (tiles[i].tile === "wall")
-                    {
-                        //physics.newWallBody(id, pos, gridSize, gridSize);
-                    }
+                    tiles[i].cordId = chunkPos.x + "_" + chunkPos.y;
+                    tiles[i].globalPos = misc.calcGlobalPos(chunkPos, gridSize);
+                    let xyKey = misc.getXYKey(chunkPos);
+                    tiles[i].xyKey = xyKey;
+                    tiles[i].chunkLoaded = false;
+                    tiles[i].chunkRendered = false;
+                    tilesData[xyKey] = tiles[i];
                 }
-                resolve(tilesData);
             }
+            resolve(tilesData);
+        });
+    });
+}
+
+async function getNewMapID()
+{
+    return new Promise(function(resolve, reject) {
+        sql.qry2(serverSQLPool, "SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?", [serverSQLPool.config.connectionConfig.database, "map"], function(data) {
+            resolve(data);
         });
     });
 }
 
 async function generateMap(pos, mapData, gridSize, playerUserID, step = 0)
 {
-    return new Promise(function(resolve, reject) {
+    return new Promise(async function(resolve, reject) {
+        let ins = "INSERT IGNORE INTO `map` (`xyKey`, `chunkPosX`, `chunkPosY`, `tile`, `seededBy`) VALUES ";
+        let sqlQry = [];
+        let param = [];
+        //let newIns = 0;
         for (let sy = -1; sy <= 1; sy++)
         {
             for (let sx = -1; sx <= 1; sx++)
@@ -67,15 +89,24 @@ async function generateMap(pos, mapData, gridSize, playerUserID, step = 0)
                     } else {
                         mapData[xyKey].tile = "floor";
                     }
-                    //misc.dump(mapData[xyKey]);
-                    sql.qry(serverSQLPool, "INSERT IGNORE INTO `map` (`chunkPosX`, `chunkPosY`, `tile`, `seededBy`) VALUES (?, ?, ?, ?)", [sPos.x, sPos.y, mapData[xyKey].tile, playerUserID], function(ins) {
-                        let id = ins.insertId;
-                        mapData[xyKey].id = id;
-                    });
+                    sqlQry.push("(?, ?, ?, ?, ?)");
+                    param.push(xyKey);
+                    param.push(sPos.x);
+                    param.push(sPos.y);
+                    param.push(mapData[xyKey].tile);
+                    param.push(playerUserID);
+                    //newIns++;
                 }
             }
         }
-        resolve(mapData);
+        if (sqlQry.length > 0)
+        {
+            sql.qry(serverSQLPool, ins + sqlQry.join(","), param, function() {});
+        }
+        resolve({
+            mapData: mapData,
+            //newIns: newIns,
+        });
     });
 }
 
@@ -243,6 +274,7 @@ function pickDir(thisMaze, pos, size, padding)
 
 module.exports = {
     generateMap: generateMap,
+    getNewMapID: getNewMapID,
     generateMaze: generateMaze,
     loadMapData: loadMapData,
 };

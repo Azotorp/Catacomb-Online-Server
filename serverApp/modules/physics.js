@@ -82,6 +82,18 @@ function newWallBody(id, pos, width, height)
     }
 }
 
+function clearAllWallBodies()
+{
+    if (misc.isDefined(physics.wall.body))
+    {
+        for (let id in physics.wall.body)
+        {
+            if (misc.isDefined(physics.wall.body[id]))
+                world.removeBody(physics.wall.body[id]);
+        }
+    }
+}
+
 module.exports = {
     world: world,
     FLAG: FLAG,
@@ -89,4 +101,5 @@ module.exports = {
     wallBody: physics.wall.body,
     newPlayerBody: newPlayerBody,
     newWallBody: newWallBody,
+    clearAllWallBodies: clearAllWallBodies,
 };
