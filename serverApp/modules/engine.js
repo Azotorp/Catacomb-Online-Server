@@ -21,13 +21,9 @@ function updatePlayerPos(players, id, FPS, gridSize)
         }
         players[id].momentumDir = physics.playerBody[id].angle;
     } else {
-        if (misc.now() > players[id].deAccelerationNextThink)
-        {
-            players[id].deAccelerationNextThink = misc.now() + deAccTimer;
-            players[id].forwardsSpeed -= players[id].forwardsDeAcceleration;
-            if (players[id].forwardsSpeed < 0)
-                players[id].forwardsSpeed = 0;
-        }
+        players[id].forwardsSpeed -= players[id].forwardsDeAcceleration;
+        if (players[id].forwardsSpeed < 0)
+            players[id].forwardsSpeed = 0;
     }
 
     if (players[id].backwards)
@@ -41,13 +37,9 @@ function updatePlayerPos(players, id, FPS, gridSize)
             players[id].momentumDir = misc.convRad(physics.playerBody[id].angle + misc.toRad(180));
         }
     } else {
-        if (misc.now() > players[id].deAccelerationNextThink)
-        {
-            players[id].deAccelerationNextThink = misc.now() + deAccTimer;
-            players[id].backwardsSpeed -= players[id].backwardsDeAcceleration;
-            if (players[id].backwardsSpeed < 0)
-                players[id].backwardsSpeed = 0;
-        }
+        players[id].backwardsSpeed -= players[id].backwardsDeAcceleration;
+        if (players[id].backwardsSpeed < 0)
+            players[id].backwardsSpeed = 0;
     }
 
     if (players[id].strafeLeft)
@@ -69,13 +61,9 @@ function updatePlayerPos(players, id, FPS, gridSize)
             }
         }
     } else {
-        if (misc.now() > players[id].deAccelerationNextThink)
-        {
-            players[id].deAccelerationNextThink = misc.now() + deAccTimer;
-            players[id].strafeLeftSpeed -= players[id].strafeDeAcceleration;
-            if (players[id].strafeLeftSpeed < 0)
-                players[id].strafeLeftSpeed = 0;
-        }
+        players[id].strafeLeftSpeed -= players[id].strafeDeAcceleration;
+        if (players[id].strafeLeftSpeed < 0)
+            players[id].strafeLeftSpeed = 0;
     }
 
     if (players[id].strafeRight)
@@ -97,13 +85,9 @@ function updatePlayerPos(players, id, FPS, gridSize)
             }
         }
     } else {
-        if (misc.now() > players[id].deAccelerationNextThink)
-        {
-            players[id].deAccelerationNextThink = misc.now() + deAccTimer;
-            players[id].strafeRightSpeed -= players[id].strafeDeAcceleration;
-            if (players[id].strafeRightSpeed < 0)
-                players[id].strafeRightSpeed = 0;
-        }
+        players[id].strafeRightSpeed -= players[id].strafeDeAcceleration;
+        if (players[id].strafeRightSpeed < 0)
+            players[id].strafeRightSpeed = 0;
     }
     players[id].currentSpeed = Math.max(players[id].forwardsSpeed, players[id].backwardsSpeed, players[id].strafeLeftSpeed, players[id].strafeRightSpeed);
     players[id].body.position = [physics.playerBody[id].position[0], physics.playerBody[id].position[1]];

@@ -155,7 +155,6 @@ io.on("connection", (socket) => {
             if (instances < access.maxInstances || access.maxInstances === -1)
             {
                 let accTimer = (1 / FPS) * 1000;
-                let deAccTimer = (1 / FPS) * 1000;
                 let playerData = {
                     authLevel: auth.level,
                     authUsername: auth.username,
@@ -170,8 +169,8 @@ io.on("connection", (socket) => {
                     forwardsDeAcceleration: 0.1 / realWorldScale,
                     backwardsAcceleration: 0.25 / realWorldScale,
                     backwardsDeAcceleration: 0.2 / realWorldScale,
-                    strafeAcceleration: 0.4,
-                    strafeDeAcceleration: 0.2,
+                    strafeAcceleration: 0.4 / realWorldScale,
+                    strafeDeAcceleration: 0.2 / realWorldScale,
                     forwardsMaxSpeed: 1.56 / realWorldScale,
                     backwardsMaxSpeed: 0.75 / realWorldScale,
                     strafeMaxSpeed: 1.3 / realWorldScale,
@@ -182,7 +181,6 @@ io.on("connection", (socket) => {
                     strafeLeftSpeed: 0,
                     strafeRightSpeed: 0,
                     accelerationNextThink: misc.now() + accTimer,
-                    deAccelerationNextThink: misc.now() + deAccTimer,
                     momentumDir: 0,
                     forwards: false,
                     backwards: false,
@@ -325,8 +323,8 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
             physics.playerBody[id].angularVelocity = 0;
             physics.playerBody[id].angle = mouseAngle;
         }
-        let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
-        let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
+        let maxChunkLoadX = Math.ceil(((winCenterX * 1) - (gridSize / 2)) / gridSize) + 2;
+        let maxChunkLoadY = Math.ceil(((winCenterY * 1) - (gridSize / 2)) / gridSize) + 2;
         let playerChunkPos = {x: players[id].chunkPos[0], y: players[id].chunkPos[1]};
         mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
         for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
@@ -369,7 +367,6 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
                 }
             }
         }
-        engine.updatePlayersPos(players, FPS, gridSize);
         mapDataSent = foundTile;
         if (mapGenData !== false)
         {
@@ -392,6 +389,7 @@ setImmediate(gameLoop);
 
 function gameLoop() {
     //dump(misc.rng(0,100));
+    engine.updatePlayersPos(players, FPS, gridSize);
     physics.world.step(1 / FPS, frameTickTime / 1000, 2);
     setTimeout(function () {
         setImmediate(gameLoop);
