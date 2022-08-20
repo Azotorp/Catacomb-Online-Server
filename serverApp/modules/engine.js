@@ -110,6 +110,7 @@ function updatePlayerPos(players, id, FPS, gridSize)
     players[id].body.angle = physics.playerBody[id].angle;
     players[id].chunkPos = misc.calcChunkPos(players[id].body.position, gridSize);
     physics.playerBody[id].velocity = [Math.cos(players[id].momentumDir) * players[id].currentSpeed, Math.sin(players[id].momentumDir) * players[id].currentSpeed];
+    players[id].velocity = physics.playerBody[id].velocity;
 }
 
 function updatePlayersPos(players, FPS, gridSize)

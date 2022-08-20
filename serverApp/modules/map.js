@@ -59,16 +59,16 @@ async function getNewMapID()
     });
 }
 
-async function generateMap(pos, mapData, gridSize, playerUserID, step = 0)
+async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 0)
 {
     return new Promise(async function(resolve, reject) {
         let ins = "INSERT IGNORE INTO `map` (`xyKey`, `chunkPosX`, `chunkPosY`, `tile`, `seededBy`) VALUES ";
         let sqlQry = [];
         let param = [];
         //let newIns = 0;
-        for (let sy = -1; sy <= 1; sy++)
+        for (let sy = -radius.y; sy <= radius.y; sy++)
         {
-            for (let sx = -1; sx <= 1; sx++)
+            for (let sx = -radius.x; sx <= radius.x; sx++)
             {
                 let sPos = {x: pos.x + sx, y: pos.y + sy};
                 let xyKey = misc.getXYKey(sPos);
@@ -83,7 +83,7 @@ async function generateMap(pos, mapData, gridSize, playerUserID, step = 0)
                     mapData[xyKey].xyKey = xyKey;
                     mapData[xyKey].chunkLoaded = false;
                     mapData[xyKey].chunkRendered = false;
-                    if (misc.rng(0, 100, 3) <= 10)
+                    if (misc.rng(0, 100, 3) <= 45)
                     {
                         mapData[xyKey].tile = "wall";
                     } else {

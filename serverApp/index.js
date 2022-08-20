@@ -79,6 +79,10 @@ physics.world.on("impact",function(evt) {
         }
         dump(body.objectID);
     }
+    if (bodyA.object === "player" && bodyB.object === "player")
+    {
+        io.emit("playerImpact", players);
+    }
 });
 
 httpServer.listen(socketIOPort, socketIOHost, async function() {
@@ -140,9 +144,11 @@ io.on("connection", (socket) => {
 
     socket.on("clientReady", async function(data) {
         let auth = data.auth;
+        let avatar = data.avatar;
         winCenterX = data.winCenterX;
         winCenterY = data.winCenterY;
         zoom = data.zoom;
+        let mouse = {x: data.mouse.x, y: data.mouse.y};
         sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], async function(result) {
             let instances = result.open_instances;
             let access = misc.filterObj2(accessLevels, "level", auth.level);
@@ -154,11 +160,12 @@ io.on("connection", (socket) => {
                     authLevel: auth.level,
                     authUsername: auth.username,
                     authUserID: auth.userID,
-                    authIP: auth.ip,
+                    //authIP: auth.ip,
                     authKey: auth.key,
+                    avatar: avatar,
                     playerID: playerID,
                     uuid: uuid,
-                    turnSpeed: 360,
+                    turnSpeed: 720,
                     forwardsAcceleration: 0.5 / realWorldScale,
                     forwardsDeAcceleration: 0.1 / realWorldScale,
                     backwardsAcceleration: 0.25 / realWorldScale,
@@ -183,6 +190,8 @@ io.on("connection", (socket) => {
                     strafeRight: false,
                     isRunning: false,
                     stopPlayerTurn: false,
+                    velocity: [0, 0],
+                    mouse: mouse,
                 };
                 let pos = {x: 0, y: 0};
                 physics.newPlayerBody(playerID, pos, data.player.width, data.player.height);
@@ -303,7 +312,9 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
     let mapDataSent;
     if (misc.isDefined(players[id]))
     {
+        players[id].mouse = mouse;
         let pos = {x: physics.playerBody[id].position[0], y: physics.playerBody[id].position[1]};
+        //dump(id + " | " + players[id].body.position[0] + " : " + players[id].body.position[1]);
         let mouseAngle = misc.angle(pos, mouse);
         let angleDist = misc.angleDist(mouseAngle, physics.playerBody[id].angle);
         let turnDir = misc.angleMoveDir(mouseAngle, physics.playerBody[id].angle);
@@ -352,12 +363,13 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
                     }
                 } else {
                     //dump(newMapID);
-                    let gen = await map.generateMap({x: x, y: y}, mapData[id], gridSize);
+                    let radius = {x: 0, y: 0};
+                    let gen = await map.generateMap({x: x, y: y}, mapData[id], radius, gridSize);
                     mapGenData = gen.mapData;
                 }
             }
         }
-        engine.updatePlayerPos(players, id, FPS, gridSize);
+        engine.updatePlayersPos(players, FPS, gridSize);
         mapDataSent = foundTile;
         if (mapGenData !== false)
         {
