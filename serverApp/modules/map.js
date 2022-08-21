@@ -50,6 +50,7 @@ async function loadMapData(pos =  {x: 0, y: 0}, radius= {x: 0, y: 0})
     });
 }
 
+/*
 async function getNewMapID()
 {
     return new Promise(function(resolve, reject) {
@@ -58,6 +59,7 @@ async function getNewMapID()
         });
     });
 }
+*/
 
 async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 0)
 {
@@ -89,6 +91,8 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     } else {
                         mapData[xyKey].tile = "floor";
                     }
+                    if (xyKey === "p0_p0")
+                        mapData[xyKey].tile = "floor";
                     sqlQry.push("(?, ?, ?, ?, ?)");
                     param.push(xyKey);
                     param.push(sPos.x);
@@ -108,6 +112,528 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
             //newIns: newIns,
         });
     });
+}
+
+function calcShadow(pos, mapData)
+{
+    let shadow = false;
+    let rotation = false;
+    let x = pos.x;
+    let y = pos.y;
+    let xyKey = misc.getXYKey({x: x, y: y});
+    if (!misc.isDefined(mapData[xyKey]))
+    {
+        return {
+            shadow: shadow,
+            rotation: rotation,
+        };
+    }
+    if (mapData[xyKey].tile !== "floor")
+    {
+        return {
+            shadow: shadow,
+            rotation: rotation,
+        };
+    }
+    let tiles = [];
+    /*
+    [ 0 ] [ 1 ] [ 2 ]
+    [ 3 ] [ 4 ] [ 5 ]
+    [ 6 ] [ 7 ] [ 8 ]
+    */
+    for (let yy = 1; yy >= -1; yy--)
+    {
+        for (let xx = -1; xx <= 1; xx++)
+        {
+            let tile = mapData[misc.getXYKey({x: x + xx, y: y + yy})];
+            if (!misc.isDefined(tile))
+            {
+                return {
+                    shadow: false,
+                    rotation: false,
+                };
+            }
+            tiles.push({
+                type: tile.tile,
+                is: function(check) {
+                    if (check === "wall" && this.type === "wall")
+                        return true;
+                    if (check === "wall" && this.type === "floor")
+                        return false;
+                    if (check === "floor" && this.type === "floor")
+                        return true;
+                    if (check === "floor" && this.type === "wall")
+                        return false;
+                    if (check === "any")
+                        return true;
+                },
+            });
+        }
+    }
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "hollowBox";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "crossroad";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "deadEnd";
+        rotation = 0; // no change / image facing south like a U shape
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "deadEnd";
+        rotation = 90; // 90 deg anti-clockwise
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "deadEnd";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "deadEnd";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorCorner";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorCorner";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorCorner";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorCorner";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "side";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "side";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "side";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "side";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "sideCornerA";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "sideCornerA";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "sideCornerA";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "sideCornerA";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "sideCornerB";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "sideCornerB";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "sideCornerB";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "sideCornerB";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "straight";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "straight";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "tJunc";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "tJunc";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "tJunc";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "tJunc";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "turn";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "turn";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "turn";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "turn";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "wallCorner";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("wall") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "wallCorner";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("any") && tiles[7].is("wall") && tiles[8].is("any")
+    )
+    {
+        shadow = "wallCorner";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("any") && tiles[1].is("wall") && tiles[2].is("any") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("wall") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("any")
+    )
+    {
+        shadow = "wallCorner";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorOpeningA";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorOpeningA";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningA";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningA";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorOpeningB";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningB";
+        rotation = 90;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningB";
+        rotation = 180;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningB";
+        rotation = 270;
+    }
+
+    if (
+        tiles[0].is("floor") && tiles[1].is("floor") && tiles[2].is("wall") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("wall") && tiles[7].is("floor") && tiles[8].is("floor")
+    )
+    {
+        shadow = "floorOpeningC";
+        rotation = 0;
+    }
+
+    if (
+        tiles[0].is("wall") && tiles[1].is("floor") && tiles[2].is("floor") &&
+        tiles[3].is("floor") && tiles[4].is("floor") && tiles[5].is("floor") &&
+        tiles[6].is("floor") && tiles[7].is("floor") && tiles[8].is("wall")
+    )
+    {
+        shadow = "floorOpeningC";
+        rotation = 90;
+    }
+
+    return {
+        shadow: shadow,
+        rotation: rotation,
+    };
 }
 
 async function generateMaze(dimX, dimY, orgX = false, orgY = false)
@@ -273,8 +799,8 @@ function pickDir(thisMaze, pos, size, padding)
 }
 
 module.exports = {
-    generateMap: generateMap,
-    getNewMapID: getNewMapID,
-    generateMaze: generateMaze,
     loadMapData: loadMapData,
+    generateMap: generateMap,
+    calcShadow: calcShadow,
+    generateMaze: generateMaze,
 };

@@ -77,7 +77,7 @@ physics.world.on("impact",function(evt) {
             id = idB;
             body = bodyB;
         }
-        dump(body.objectID);
+        //dump(body.objectID);
     }
     if (bodyA.object === "player" && bodyB.object === "player")
     {
@@ -205,8 +205,19 @@ io.on("connection", (socket) => {
                 let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
                 dump(data.auth);
                 mapData[playerID] = await map.loadMapData({x: players[playerID].chunkPos[0], y: players[playerID].chunkPos[1]}, {x: maxChunkLoadX, y: maxChunkLoadY});
+                for (let i in mapData[playerID])
+                {
+                    let pos = {x: mapData[playerID][i].chunkPosX, y: mapData[playerID][i].chunkPosY};
+                    let shadowData = map.calcShadow(pos, mapData[playerID]);
+                    mapData[playerID][i].shadow = shadowData.shadow;
+                    mapData[playerID][i].shadowRotation = shadowData.rotation;
+                }
                 dump("New Player: "+playerID);
-                io.emit("newPlayer", {playerData: playerData, players: players});
+                io.emit("newPlayer", {
+                    playerData: playerData,
+                    players: players,
+                    mapData: mapData[playerID],
+                });
                 playerID++;
                 //dump(misc.now() - startTime);
             } else {
@@ -295,7 +306,7 @@ io.on("connection", (socket) => {
                 if (misc.isDefined(physics.wallBody[deRenderedID]))
                 {
                     physics.world.removeBody(physics.wallBody[deRenderedID]);
-                    physics.wallBody[deRenderedID];
+                    delete physics.wallBody[deRenderedID];
                 }
             }
         }
@@ -333,12 +344,13 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
             {
                 let x = playerChunkPos.x + sx;
                 let y = playerChunkPos.y + sy;
-                if (misc.isDefined(mapData[id][misc.getXYKey({x: x, y: y})]))
+                let index = misc.getXYKey({x: x, y: y});
+                if (misc.isDefined(mapData[id][index]))
                 {
-                    let index = misc.getXYKey({x: x, y: y});
                     let tileData = mapData[id][index];
                     tileData.chunkLoaded = true;
                     foundTile[index] = tileData;
+
                     if (tileData.tile === "wall")
                     {
                         let wallBody = misc.calcGlobalPos({x: mapData[id][index].chunkPosX, y: mapData[id][index].chunkPosY}, gridSize);
@@ -360,9 +372,9 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
                         }
                     }
                 } else {
-                    //dump(newMapID);
                     let radius = {x: 0, y: 0};
-                    let gen = await map.generateMap({x: x, y: y}, mapData[id], radius, gridSize);
+                    let pos = {x: x, y: y};
+                    let gen = await map.generateMap(pos, mapData[id], radius, gridSize);
                     mapGenData = gen.mapData;
                 }
             }
@@ -374,6 +386,14 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
                 ...foundTile,
                 ...mapGenData,
             };
+        }
+
+        for (let i in mapDataSent)
+        {
+            let pos = {x: mapDataSent[i].chunkPosX, y: mapDataSent[i].chunkPosY};
+            let shadowData = map.calcShadow(pos, mapDataSent);
+            mapDataSent[i].shadow = shadowData.shadow;
+            mapDataSent[i].shadowRotation = shadowData.rotation;
         }
 
         io.emit("serverUpdate", {
