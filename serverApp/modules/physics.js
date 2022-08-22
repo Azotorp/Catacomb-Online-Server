@@ -144,10 +144,21 @@ function castFOVRay(origin, endPos)
     physics.playerFOVRayCast.result.getHitPoint(physics.playerFOVRayCast.hitPoint, physics.playerFOVRayCast.rayClosest);
     if (physics.playerFOVRayCast.result.body !== null)
     {
+        //let angle = misc.angle(origin, {x: physics.playerFOVRayCast.hitPoint[0], y: physics.playerFOVRayCast.hitPoint[1]});
         //misc.dump(physics.playerFOVRayCast.result.body.objectID);
-        return {x: physics.playerFOVRayCast.hitPoint[0], y: -physics.playerFOVRayCast.hitPoint[1], body: physics.playerFOVRayCast.result.body.objectID};
+        return {
+            x: physics.playerFOVRayCast.hitPoint[0],
+            y: -physics.playerFOVRayCast.hitPoint[1],
+            //angle: angle,
+            //body: physics.playerFOVRayCast.result.body.objectID,
+        };
     } else {
-        return {x: endPos.x, y: -endPos.y, body: false};
+        return {
+            x: endPos.x,
+            y: -endPos.y,
+            //angle: false,
+            //body: false,
+        };
     }
 }
 

@@ -97,15 +97,70 @@ function updatePlayerPos(players, id, FPS, gridSize)
     players[id].body.velocity = physics.player.body[id].velocity;
 }
 
-function updatePlayersPos(players, FPS, gridSize)
+function updatePlayersPos(players, FPS, gridSize, mapData)
 {
     if (misc.isDefined(players))
     {
         for (let id in players)
         {
             updatePlayerPos(players, id, FPS, gridSize);
-            let totalRays = 360;
+            let origin = {
+                x: players[id].body.position[0],
+                y: players[id].body.position[1],
+            };
+            let totalRays = 9;
             let fovScanPos = [];
+            let angle = [];
+            let playerAngle = players[id].body.angle;
+            for (let m in mapData[id])
+            {
+                if (mapData[id][m].tile === "wall")
+                {
+                    let corner = [];
+                    let pos = {x: mapData[id][m].chunkPosX, y: mapData[id][m].chunkPosY};
+                    let cornerPos = misc.calcGlobalPos(pos, gridSize);
+                    corner[0] = {
+                        x: cornerPos.x - gridSize / 2,
+                        y: cornerPos.y - gridSize / 2,
+                    };
+                    corner[1] = {
+                        x: cornerPos.x + gridSize / 2,
+                        y: cornerPos.y - gridSize / 2,
+                    };
+                    corner[2] = {
+                        x: cornerPos.x - gridSize / 2,
+                        y: cornerPos.y + gridSize / 2,
+                    };
+                    corner[3] = {
+                        x: cornerPos.x + gridSize / 2,
+                        y: cornerPos.y + gridSize / 2,
+                    };
+                    for (let c in corner)
+                    {
+                        let angle1 = misc.angle(origin, {x: corner[c].x - 0.1, y: corner[c].y});
+                        let angle2 = misc.angle(origin, {x: corner[c].x + 0.1, y: corner[c].y});
+                        angle.push(angle1);
+                        angle.push(angle2);
+                    }
+                }
+            }
+            angle.sort((a, b) => {
+                return a - b;
+            });
+
+            for (let a in angle)
+            {
+                let endPos = {
+                    x: origin.x + Math.cos(angle[a]) * 99999999,
+                    y: origin.y + Math.sin(angle[a]) * 99999999,
+                };
+                fovScanPos.push(physics.castFOVRay(origin, endPos));
+            }
+
+            players[id].fovScanPath = fovScanPos;
+
+
+            /*
             for (let rays = 0; rays < totalRays; rays++)
             {
                 let origin = {
@@ -118,10 +173,9 @@ function updatePlayersPos(players, FPS, gridSize)
                     y: origin.y + Math.sin(angle) * 999999,
                 };
                 let path = physics.castFOVRay(origin, endPos);
-                fovScanPos.push(path.x);
-                fovScanPos.push(path.y);
-            }
-            players[id].fovScanPath = fovScanPos;
+                fovScanPos.push(path);
+                //fovScanPos.push(path.y);
+            }*/
         }
     }
 }

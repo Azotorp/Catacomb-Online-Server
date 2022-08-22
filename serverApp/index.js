@@ -403,7 +403,7 @@ setImmediate(gameLoop);
 
 function gameLoop() {
     //dump(misc.rng(0,100));
-    engine.updatePlayersPos(players, FPS, gridSize);
+    engine.updatePlayersPos(players, FPS, gridSize, mapData);
     physics.world.step(1 / FPS, frameTickTime / 1000, 2);
     setTimeout(function () {
         setImmediate(gameLoop);
