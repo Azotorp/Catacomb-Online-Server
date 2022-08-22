@@ -123,8 +123,7 @@ io.on("connection", (socket) => {
         if (misc.objLength(data) > 0)
         {
             let playerID = data.playerID;
-            physics.world.removeBody(physics.playerBody[playerID]);
-            delete physics.playerBody[playerID];
+            physics.deletePlayerBody(playerID);
             delete players[playerID];
             delete mapData[playerID];
             io.emit("userDisconnect", {
@@ -188,14 +187,14 @@ io.on("connection", (socket) => {
                     strafeRight: false,
                     isRunning: false,
                     stopPlayerTurn: false,
-                    velocity: [0, 0],
                     mouse: mouse,
                 };
                 let pos = {x: 0, y: 0};
                 physics.newPlayerBody(playerID, pos, data.player.width, data.player.height);
                 playerData.body = {
-                    position: [physics.playerBody[playerID].position[0], physics.playerBody[playerID].position[1]],
-                    angle: physics.playerBody[playerID].angle,
+                    position: [physics.player.body[playerID].position[0], physics.player.body[playerID].position[1]],
+                    velocity: [0, 0],
+                    angle: physics.player.body[playerID].angle,
                 };
                 playerData.chunkPos = misc.calcChunkPos(playerData.body.position, gridSize);
                 players[playerID] = playerData;
@@ -303,10 +302,9 @@ io.on("connection", (socket) => {
                 mapData[id][deRenderTile[i]].chunkLoaded = false;
                 mapData[id][deRenderTile[i]].chunkRendered = false;
                 mapData[id][deRenderTile[i]].bodyID = false;
-                if (misc.isDefined(physics.wallBody[deRenderedID]))
+                if (misc.isDefined(physics.wall.body[deRenderedID]))
                 {
-                    physics.world.removeBody(physics.wallBody[deRenderedID]);
-                    delete physics.wallBody[deRenderedID];
+                    physics.deleteWallBody(deRenderedID);
                 }
             }
         }
@@ -322,17 +320,17 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
     if (misc.isDefined(players[id]))
     {
         players[id].mouse = mouse;
-        let pos = {x: physics.playerBody[id].position[0], y: physics.playerBody[id].position[1]};
+        let pos = {x: physics.player.body[id].position[0], y: physics.player.body[id].position[1]};
         //dump(id + " | " + players[id].body.position[0] + " : " + players[id].body.position[1]);
         let mouseAngle = misc.angle(pos, mouse);
-        let angleDist = misc.angleDist(mouseAngle, physics.playerBody[id].angle);
-        let turnDir = misc.angleMoveDir(mouseAngle, physics.playerBody[id].angle);
+        let angleDist = misc.angleDist(mouseAngle, physics.player.body[id].angle);
+        let turnDir = misc.angleMoveDir(mouseAngle, physics.player.body[id].angle);
         if (misc.toDeg(angleDist) > players[id].turnSpeed / FPS)
         {
-            physics.playerBody[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
+            physics.player.body[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
         } else {
-            physics.playerBody[id].angularVelocity = 0;
-            physics.playerBody[id].angle = mouseAngle;
+            physics.player.body[id].angularVelocity = 0;
+            physics.player.body[id].angle = mouseAngle;
         }
         let maxChunkLoadX = Math.ceil(((winCenterX * 1) - (gridSize / 2)) / gridSize) + 2;
         let maxChunkLoadY = Math.ceil(((winCenterY * 1) - (gridSize / 2)) / gridSize) + 2;
@@ -365,11 +363,7 @@ async function loopWorld(id, mouse, FPS, frameTickTime)
                         {
                             //dump("floor");
                         }
-                        if (misc.isDefined(physics.wallBody[index]))
-                        {
-                            physics.world.removeBody(physics.wallBody[index]);
-                            delete physics.wallBody[index];
-                        }
+                        physics.deleteWallBody(index);
                     }
                 } else {
                     let radius = {x: 0, y: 0};

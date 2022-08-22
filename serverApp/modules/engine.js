@@ -19,7 +19,7 @@ function updatePlayerPos(players, id, FPS, gridSize)
             if (players[id].forwardsSpeed > players[id].forwardsMaxSpeed * runBonus)
                 players[id].forwardsSpeed = players[id].forwardsMaxSpeed * runBonus;
         }
-        players[id].momentumDir = physics.playerBody[id].angle;
+        players[id].momentumDir = physics.player.body[id].angle;
     } else {
         players[id].forwardsSpeed -= players[id].forwardsDeAcceleration;
         if (players[id].forwardsSpeed < 0)
@@ -34,7 +34,7 @@ function updatePlayerPos(players, id, FPS, gridSize)
             players[id].backwardsSpeed += players[id].backwardsAcceleration;
             if (players[id].backwardsSpeed > players[id].backwardsMaxSpeed)
                 players[id].backwardsSpeed = players[id].backwardsMaxSpeed;
-            players[id].momentumDir = misc.convRad(physics.playerBody[id].angle + misc.toRad(180));
+            players[id].momentumDir = misc.convRad(physics.player.body[id].angle + misc.toRad(180));
         }
     } else {
         players[id].backwardsSpeed -= players[id].backwardsDeAcceleration;
@@ -52,12 +52,12 @@ function updatePlayerPos(players, id, FPS, gridSize)
                 players[id].strafeLeftSpeed = players[id].strafeMaxSpeed;
             if (players[id].forwards)
             {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle + misc.toRad(45));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle + misc.toRad(45));
             } else if (players[id].backwards)
             {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle + misc.toRad(45) + misc.toRad(180));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle + misc.toRad(45) + misc.toRad(180));
             } else {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle + misc.toRad(90));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle + misc.toRad(90));
             }
         }
     } else {
@@ -76,12 +76,12 @@ function updatePlayerPos(players, id, FPS, gridSize)
                 players[id].strafeRightSpeed = players[id].strafeMaxSpeed;
             if (players[id].forwards)
             {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle - misc.toRad(45));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle - misc.toRad(45));
             } else if (players[id].backwards)
             {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle - misc.toRad(45) + misc.toRad(180));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle - misc.toRad(45) + misc.toRad(180));
             } else {
-                players[id].momentumDir = misc.convRad(physics.playerBody[id].angle - misc.toRad(90));
+                players[id].momentumDir = misc.convRad(physics.player.body[id].angle - misc.toRad(90));
             }
         }
     } else {
@@ -90,11 +90,11 @@ function updatePlayerPos(players, id, FPS, gridSize)
             players[id].strafeRightSpeed = 0;
     }
     players[id].currentSpeed = Math.max(players[id].forwardsSpeed, players[id].backwardsSpeed, players[id].strafeLeftSpeed, players[id].strafeRightSpeed);
-    players[id].body.position = [physics.playerBody[id].position[0], physics.playerBody[id].position[1]];
-    players[id].body.angle = physics.playerBody[id].angle;
+    players[id].body.position = [physics.player.body[id].position[0], physics.player.body[id].position[1]];
+    players[id].body.angle = physics.player.body[id].angle;
     players[id].chunkPos = misc.calcChunkPos(players[id].body.position, gridSize);
-    physics.playerBody[id].velocity = [Math.cos(players[id].momentumDir) * players[id].currentSpeed, Math.sin(players[id].momentumDir) * players[id].currentSpeed];
-    players[id].velocity = physics.playerBody[id].velocity;
+    physics.player.body[id].velocity = [Math.cos(players[id].momentumDir) * players[id].currentSpeed, Math.sin(players[id].momentumDir) * players[id].currentSpeed];
+    players[id].body.velocity = physics.player.body[id].velocity;
 }
 
 function updatePlayersPos(players, FPS, gridSize)
@@ -104,6 +104,24 @@ function updatePlayersPos(players, FPS, gridSize)
         for (let id in players)
         {
             updatePlayerPos(players, id, FPS, gridSize);
+            let totalRays = 360;
+            let fovScanPos = [];
+            for (let rays = 0; rays < totalRays; rays++)
+            {
+                let origin = {
+                    x: players[id].body.position[0],
+                    y: players[id].body.position[1],
+                };
+                let angle = misc.toRad((360 / totalRays) * rays);
+                let endPos = {
+                    x: origin.x + Math.cos(angle) * 999999,
+                    y: origin.y + Math.sin(angle) * 999999,
+                };
+                let path = physics.castFOVRay(origin, endPos);
+                fovScanPos.push(path.x);
+                fovScanPos.push(path.y);
+            }
+            players[id].fovScanPath = fovScanPos;
         }
     }
 }

@@ -1,16 +1,5 @@
-let p2 = require('p2');
+const p2 = require('p2');
 const misc = require("./misc.js");
-
-let world = new p2.World({
-    gravity : [0,0],
-    frictionGravity: 10,
-    //islandSplit : true,
-});
-
-//world.sleepMode = p2.World.ISLAND_SLEEPING;
-world.solver.iterations = 20;
-world.solver.tolerance = 0.1;
-//world.setGlobalStiffness(1000000000000);
 
 const FLAG = {
     WALL: 1,
@@ -30,9 +19,24 @@ let physics = {
     wall: {
         body: {},
         shape: {},
-    }
+    },
+    world: new p2.World({
+        gravity : [0,0],
+        frictionGravity: 10,
+        //islandSplit : true,
+    }),
+    playerFOVRayCast: {
+        result: {},
+        hitPoint: {},
+        rayClosest: {},
+    },
 };
 
+
+//physics.world.sleepMode = p2.World.ISLAND_SLEEPING;
+physics.world.solver.iterations = 20;
+physics.world.solver.tolerance = 0.1;
+//physics.world.setGlobalStiffness(1000000000000);
 
 
 function newPlayerBody(playerID, pos, width, height)
@@ -54,7 +58,7 @@ function newPlayerBody(playerID, pos, width, height)
     physics.player.body[playerID].damping = 0;
     physics.player.body[playerID].centerMass = {x: (width / 2) - (width * physics.player.shape[playerID].anchorRatio.x), y: (height / 2) - (height * physics.player.shape[playerID].anchorRatio.y)};
     physics.player.body[playerID].addShape(physics.player.shape[playerID], [physics.player.body[playerID].centerMass.x, physics.player.body[playerID].centerMass.y], misc.toRad(0));
-    world.addBody(physics.player.body[playerID]);
+    physics.world.addBody(physics.player.body[playerID]);
 }
 
 function newWallBody(id, pos, width, height)
@@ -78,7 +82,31 @@ function newWallBody(id, pos, width, height)
         physics.wall.body[id].damping = 0;
         physics.wall.body[id].centerMass = {x: (width / 2) - (width * physics.wall.shape[id].anchorRatio.x), y: (height / 2) - (height * physics.wall.shape[id].anchorRatio.y)};
         physics.wall.body[id].addShape(physics.wall.shape[id], [physics.wall.body[id].centerMass.x, physics.wall.body[id].centerMass.y], misc.toRad(0));
-        world.addBody(physics.wall.body[id]);
+        physics.world.addBody(physics.wall.body[id]);
+    }
+}
+
+
+function deleteWallBody(id)
+{
+    if (misc.isDefined(physics.wall.body[id]))
+    {
+        physics.world.removeBody(physics.wall.body[id]);
+        delete physics.wall.body[id];
+        delete physics.wall.shape[id];
+    }
+}
+
+function deletePlayerBody(id)
+{
+    if (misc.isDefined(physics.player.body[id]))
+    {
+        if (misc.isDefined(physics.player.body[id]))
+        {
+            physics.world.removeBody(physics.player.body[id]);
+            delete physics.player.body[id];
+            delete physics.player.shape[id];
+        }
     }
 }
 
@@ -88,18 +116,54 @@ function clearAllWallBodies()
     {
         for (let id in physics.wall.body)
         {
-            if (misc.isDefined(physics.wall.body[id]))
-                world.removeBody(physics.wall.body[id]);
+            if (misc.isDefined(physics.wall.body[id])) {
+                physics.world.removeBody(physics.wall.body[id]);
+                delete physics.wall.body[id];
+                delete physics.wall.shape[id];
+            }
         }
     }
 }
 
+function castFOVRay(origin, endPos)
+{
+    physics.playerFOVRayCast = {
+        result: new p2.RaycastResult(),
+        hitPoint: p2.vec2.create(),
+        rayClosest: new p2.Ray({
+            mode: p2.Ray.CLOSEST,
+            collisionMask: FLAG.WALL,
+            skipBackfaces: true,
+        }),
+    };
+
+    p2.vec2.copy(physics.playerFOVRayCast.rayClosest.from, [origin.x, origin.y]);
+    p2.vec2.copy(physics.playerFOVRayCast.rayClosest.to, [endPos.x, endPos.y]);
+    physics.playerFOVRayCast.rayClosest.update();
+    physics.world.raycast(physics.playerFOVRayCast.result, physics.playerFOVRayCast.rayClosest);
+    physics.playerFOVRayCast.result.getHitPoint(physics.playerFOVRayCast.hitPoint, physics.playerFOVRayCast.rayClosest);
+    if (physics.playerFOVRayCast.result.body !== null)
+    {
+        //misc.dump(physics.playerFOVRayCast.result.body.objectID);
+        return {x: physics.playerFOVRayCast.hitPoint[0], y: -physics.playerFOVRayCast.hitPoint[1], body: physics.playerFOVRayCast.result.body.objectID};
+    } else {
+        return {x: endPos.x, y: -endPos.y, body: false};
+    }
+}
+
 module.exports = {
-    world: world,
+    world: physics.world,
     FLAG: FLAG,
-    playerBody: physics.player.body,
-    wallBody: physics.wall.body,
+    player: {
+        body: physics.player.body,
+    },
+    wall: {
+        body: physics.wall.body,
+    },
     newPlayerBody: newPlayerBody,
     newWallBody: newWallBody,
+    deleteWallBody: deleteWallBody,
+    deletePlayerBody: deletePlayerBody,
     clearAllWallBodies: clearAllWallBodies,
+    castFOVRay: castFOVRay,
 };
