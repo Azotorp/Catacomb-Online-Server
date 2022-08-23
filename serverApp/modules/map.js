@@ -93,6 +93,37 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     }
                     if (xyKey === "p0_p0")
                         mapData[xyKey].tile = "floor";
+
+                    let northWall = false;
+                    let northPos = {x: pos.x, y: pos.y + 1};
+                    let northXYKey = misc.getXYKey(northPos);
+                    let southWall = false;
+                    let southPos = {x: pos.x, y: pos.y - 1};
+                    let southXYKey = misc.getXYKey(southPos);
+                    let eastWall = false;
+                    let eastPos = {x: pos.x + 1, y: pos.y};
+                    let eastXYKey = misc.getXYKey(eastPos);
+                    let westWall = false;
+                    let westPos = {x: pos.x - 1, y: pos.y};
+                    let westXYKey = misc.getXYKey(westPos);
+                    if (misc.isDefined(mapData[northXYKey]) && mapData[northXYKey].tile === "wall")
+                        northWall = true;
+                    if (misc.isDefined(mapData[southXYKey]) && mapData[southXYKey].tile === "wall")
+                        southWall = true;
+                    if (misc.isDefined(mapData[eastXYKey]) && mapData[eastXYKey].tile === "wall")
+                        eastWall = true;
+                    if (misc.isDefined(mapData[westXYKey]) && mapData[westXYKey].tile === "wall")
+                        westWall = true;
+
+                    if (mapData[xyKey].tile === "floor" && northWall && southWall && eastWall && westWall)
+                    {
+                        mapData[xyKey].tile = "wall";
+                    }
+
+
+
+
+
                     sqlQry.push("(?, ?, ?, ?, ?)");
                     param.push(xyKey);
                     param.push(sPos.x);
@@ -103,6 +134,7 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                 }
             }
         }
+
         if (sqlQry.length > 0)
         {
             sql.qry(serverSQLPool, ins + sqlQry.join(","), param, function() {});
