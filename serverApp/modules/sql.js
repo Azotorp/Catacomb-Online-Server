@@ -32,16 +32,28 @@ function dump(input)
 function qry(pool, query_str, query_var, data)
 {
     pool.getConnection((err, connection) => {
-        connection.query({
-            sql: query_str,
-            timeout: 40000, // 40s
-            values: query_var
-        }, function (error, results) {
-            data(results, error);
-            // error will be an Error if one occurred during the query
-            // results will contain the results of the query
-            // fields will contain information about the returned results fields (if any)
-        });
+        if(err)
+            throw err;
+        try {
+            connection.query({
+                sql: query_str,
+                timeout: 40000, // 40s
+                values: query_var
+            }, function (error, results) {
+                if (error)
+                    throw error;
+                try {
+                    data(results, error);
+                    // error will be an Error if one occurred during the query
+                    // results will contain the results of the query
+                    // fields will contain information about the returned results fields (if any)
+                } catch (e) {
+                    console.error(e);
+                }
+            });
+        } catch (e) {
+            console.error(e);
+        }
         connection.release();
     });
 }
@@ -49,28 +61,39 @@ function qry(pool, query_str, query_var, data)
 function qry2(pool, query_str, query_var, data)
 {
     pool.getConnection((err, connection) => {
-        if(err) throw err;
-        connection.query({
-            sql: query_str,
-            timeout: 40000, // 40s
-            values: query_var
-        }, function (error, results, fields) {
-            if (results.length === 1)
-            {
-                if (misc.objLength(results[0]) === 1)
-                {
-                    let val = Object.values(results[0]);
-                    data(val[0], error);
-                } else {
-                    data(results[0], error);
+        if(err)
+            throw err;
+        try {
+            connection.query({
+                sql: query_str,
+                timeout: 40000, // 40s
+                values: query_var
+            }, function (error, results, fields) {
+                if (error)
+                    throw error;
+                try {
+                    if (results.length === 1)
+                    {
+                        if (misc.objLength(results[0]) === 1)
+                        {
+                            let val = Object.values(results[0]);
+                            data(val[0], error);
+                        } else {
+                            data(results[0], error);
+                        }
+                    } else {
+                        data(results, error);
+                    }
+                    // error will be an Error if one occurred during the query
+                    // results will contain the results of the query
+                    // fields will contain information about the returned results fields (if any)
+                } catch (e) {
+                    console.error(e);
                 }
-            } else {
-                data(results, error);
-            }
-            // error will be an Error if one occurred during the query
-            // results will contain the results of the query
-            // fields will contain information about the returned results fields (if any)
-        });
+            });
+        } catch (e) {
+            console.error(e);
+        }
         connection.release();
     });
 }

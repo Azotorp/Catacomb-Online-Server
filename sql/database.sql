@@ -44,7 +44,6 @@ CREATE TABLE IF NOT EXISTS `map` (
     PRIMARY KEY (`xyKey`)
     ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
-
 DROP TABLE IF EXISTS `settings`;
 CREATE TABLE IF NOT EXISTS `settings` (
     `setting` varchar(50) DEFAULT NULL,
@@ -54,8 +53,11 @@ CREATE TABLE IF NOT EXISTS `settings` (
 INSERT INTO `settings` (`setting`, `value`) VALUES
 ('gridSize', '512'),
 ('playerScale', '0.75'),
-('mapWidth', '999'),
-('mapHeight', '999');
+('mapWidth', '99'),
+('mapHeight', '99'),
+('playerUpdatePollingDelay', '0'),
+('mapUpdatePollingDelay', '0'),
+('inputUpdatePollingDelay', '0');
 
 DROP TABLE IF EXISTS `sql_error`;
 CREATE TABLE IF NOT EXISTS `sql_error` (

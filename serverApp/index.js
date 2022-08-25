@@ -19,7 +19,7 @@ const httpServer = createServer({
 });
 
 let players = {};
-let playerID = 0;
+let newPlayerID = 0;
 
 const io = new Server(httpServer, {
     cors: {
@@ -28,6 +28,9 @@ const io = new Server(httpServer, {
 });
 
 let serverRunning = false;
+let playerUpdatePollingDelay = 0;
+let mapUpdatePollingDelay = 0;
+let inputUpdatePollingDelay = 0;
 let playerScale = 1;
 let realWorldScale = 0.00761461306 / playerScale; // meters per pixel
 let accessLevels = {};
@@ -45,6 +48,7 @@ let zoom = {};
 let lastFrameTime = misc.now();
 let walls = [];
 let mouse = {};
+let playerAngle = {};
 sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], function (data) {
 
     for (let k in data)
@@ -98,6 +102,9 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
         x: parseInt(SETTINGS.mapWidth),
         y: parseInt(SETTINGS.mapHeight),
     };
+    playerUpdatePollingDelay = SETTINGS.playerUpdatePollingDelay;
+    mapUpdatePollingDelay = SETTINGS.mapUpdatePollingDelay;
+    inputUpdatePollingDelay = SETTINGS.inputUpdatePollingDelay;
 
     /*
     let genMapData = await map.generateMap(mapSize.x, mapSize.y);
@@ -120,12 +127,19 @@ io.on("connection", (socket) => {
     socket.on('disconnect', () => {
         dump("User "+uuid+" disconnected.");
         let data = misc.filterObj2(players, "uuid", uuid);
+        dump(data);
         if (misc.objLength(data) > 0)
         {
             let playerID = data.playerID;
             physics.deletePlayerBody(playerID);
             delete players[playerID];
             delete mapData[playerID];
+            delete mouse[playerID];
+            delete playerAngle[playerID];
+            delete zoom[playerID];
+            delete winCenterX[playerID];
+            delete winCenterY[playerID];
+
             io.emit("userDisconnect", {
                 players: players,
                 playerID: playerID,
@@ -143,12 +157,13 @@ io.on("connection", (socket) => {
 
     socket.on("clientReady", async function(data) {
         let auth = data.auth;
-        dump(data);
+        //dump(data);
         let avatar = data.avatar;
-        winCenterX[playerID] = data.winCenterX;
-        winCenterY[playerID] = data.winCenterY;
-        zoom[playerID] = data.zoom;
-        mouse[playerID] = {x: data.mouse.x, y: data.mouse.y};
+        winCenterX[newPlayerID] = data.winCenterX;
+        winCenterY[newPlayerID] = data.winCenterY;
+        zoom[newPlayerID] = data.zoom;
+        mouse[newPlayerID] = {x: data.mouse.x, y: data.mouse.y};
+        playerAngle[newPlayerID] = data.playerAngle;
         sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], async function(result) {
             let instances = result.open_instances;
             let access = misc.filterObj2(accessLevels, "level", auth.level);
@@ -162,19 +177,22 @@ io.on("connection", (socket) => {
                     //authIP: auth.ip,
                     authKey: auth.key,
                     avatar: avatar,
-                    playerID: playerID,
+                    playerID: newPlayerID,
                     uuid: uuid,
                     turnSpeed: 720,
-                    forwardsAcceleration: 0.5 / realWorldScale,
-                    forwardsDeAcceleration: 0.1 / realWorldScale,
-                    backwardsAcceleration: 0.25 / realWorldScale,
-                    backwardsDeAcceleration: 0.2 / realWorldScale,
-                    strafeAcceleration: 0.4 / realWorldScale,
-                    strafeDeAcceleration: 0.2 / realWorldScale,
-                    forwardsMaxSpeed: 2 / realWorldScale,
+                    forwardsAcceleration: 2 / realWorldScale,
+                    forwardsDeAcceleration: 3 / realWorldScale,
+                    backwardsAcceleration: 0.9 / realWorldScale,
+                    backwardsDeAcceleration: 4 / realWorldScale,
+                    strafeAcceleration: 2 / realWorldScale,
+                    strafeDeAcceleration: 2 / realWorldScale,
+                    forwardsMaxSpeed: 1.56 / realWorldScale,
                     backwardsMaxSpeed: 1 / realWorldScale,
                     strafeMaxSpeed: 1.5 / realWorldScale,
-                    runBonusSpeed: 2.5,
+                    runBonusSpeed: 1,
+                    runMinBonusSpeed: 1,
+                    runMaxBonusSpeed: 2.35,
+                    runBonusSpeedIncMulti: 1.01,
                     currentSpeed: 0,
                     forwardsSpeed: 0,
                     backwardsSpeed: 0,
@@ -187,38 +205,44 @@ io.on("connection", (socket) => {
                     strafeLeft: false,
                     strafeRight: false,
                     isRunning: false,
+                    isTipToe: false,
                     stopPlayerTurn: false,
-                    mouse: mouse[playerID],
+                    mouse: mouse[newPlayerID],
                 };
                 let pos = {x: 0, y: 0};
-                physics.newPlayerBody(playerID, pos, data.player.width, data.player.height);
+                physics.newPlayerBody(newPlayerID, pos, data.player.width, data.player.height);
                 playerData.body = {
-                    position: [physics.player.body[playerID].position[0], physics.player.body[playerID].position[1]],
+                    position: [physics.player.body[newPlayerID].position[0], physics.player.body[newPlayerID].position[1]],
                     velocity: [0, 0],
-                    angle: physics.player.body[playerID].angle,
+                    angle: physics.player.body[newPlayerID].angle,
+                    angularVelocity: physics.player.body[newPlayerID].angularVelocity,
                 };
                 playerData.chunkPos = misc.calcChunkPos(playerData.body.position, gridSize);
-                players[playerID] = playerData;
+                players[newPlayerID] = playerData;
                 sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
                 sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
                 let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
                 let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
                 //dump(data.auth);
-                mapData[playerID] = await map.loadMapData({x: players[playerID].chunkPos[0], y: players[playerID].chunkPos[1]}, {x: maxChunkLoadX, y: maxChunkLoadY});
-                for (let i in mapData[playerID])
+                mapData[newPlayerID] = await map.loadMapData({x: players[newPlayerID].chunkPos[0], y: players[newPlayerID].chunkPos[1]}, {x: maxChunkLoadX, y: maxChunkLoadY});
+                for (let i in mapData[newPlayerID])
                 {
-                    let pos = {x: mapData[playerID][i].chunkPosX, y: mapData[playerID][i].chunkPosY};
-                    let shadowData = map.calcShadow(pos, mapData[playerID]);
-                    mapData[playerID][i].shadow = shadowData.shadow;
-                    mapData[playerID][i].shadowRotation = shadowData.rotation;
+                    let pos = {x: mapData[newPlayerID][i].chunkPosX, y: mapData[newPlayerID][i].chunkPosY};
+                    let shadowData = map.calcShadow(pos, mapData[newPlayerID]);
+                    mapData[newPlayerID][i].shadow = shadowData.shadow;
+                    mapData[newPlayerID][i].shadowRotation = shadowData.rotation;
                 }
-                dump("New Player: "+playerID);
+                dump("New Player: "+newPlayerID);
+
+                engine.updatePlayerPos(players, newPlayerID, FPS, gridSize, mapData);
+
                 io.emit("newPlayer", {
                     playerData: playerData,
                     players: players,
-                    mapData: mapData[playerID],
+                    newPlayerID: newPlayerID,
+                    mapData: mapData[newPlayerID],
                 });
-                playerID++;
+                newPlayerID++;
                 //dump(misc.now() - startTime);
             } else {
                 io.emit("maxInstances", uuid);
@@ -231,52 +255,70 @@ io.on("connection", (socket) => {
         let id = msg.id;
         if (misc.isDefined(players[id]))
         {
-            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), players[id].authUserID], function() {});
-            if (func === "run")
+            let inputUpdatePollingFrames = parseInt((inputUpdatePollingDelay / frameTickTime).toFixed(0));
+            if (inputUpdatePollingFrames === 0)
+                inputUpdatePollingFrames = 1;
+            if (frames % inputUpdatePollingFrames === 0)
             {
-                players[id].isRunning = true;
-            }
-            if (func === "runStop")
-            {
-                players[id].isRunning = false;
-            }
-            if (func === "upStop")
-            {
-                players[id].forwards = false;
-                players[id].backwards = false;
-            }
-            if (func === "downStop")
-            {
-                players[id].forwards = false;
-                players[id].backwards = false;
-            }
-            if (func === "leftStop")
-            {
-                players[id].strafeLeft = false;
-            }
-            if (func === "rightStop")
-            {
-                players[id].strafeRight = false;
-            }
-            if (func === "up")
-            {
-                players[id].forwards = true;
-                players[id].backwards = false;
-            }
-            if (func === "down")
-            {
-                players[id].forwards = false;
-                players[id].backwards = true;
-            }
-            if (func === "left")
-            {
-                players[id].strafeLeft = true;
-                players[id].strafeRight = false;
-            }
-            if (func === "right")
-            {
-                players[id].strafeLeft = false;
-                players[id].strafeRight = true;
+                sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), players[id].authUserID], function() {});
+                if (func === "run")
+                {
+                    if (players[id].isTipToe)
+                        players[id].isTipToe = false;
+                    players[id].isRunning = true;
+                }
+                if (func === "runStop")
+                {
+                    players[id].isRunning = false;
+                }
+                if (func === "tipToe")
+                {
+                    if (players[id].isRunning)
+                        players[id].isRunning = false;
+                    players[id].isTipToe = true;
+                }
+                if (func === "tipToeStop")
+                {
+                    players[id].isTipToe = false;
+                }
+                if (func === "upStop")
+                {
+                    players[id].forwards = false;
+                    players[id].backwards = false;
+                }
+                if (func === "downStop")
+                {
+                    players[id].forwards = false;
+                    players[id].backwards = false;
+                }
+                if (func === "leftStop")
+                {
+                    players[id].strafeLeft = false;
+                }
+                if (func === "rightStop")
+                {
+                    players[id].strafeRight = false;
+                }
+                if (func === "up")
+                {
+                    players[id].forwards = true;
+                    players[id].backwards = false;
+                }
+                if (func === "down")
+                {
+                    players[id].forwards = false;
+                    players[id].backwards = true;
+                }
+                if (func === "left")
+                {
+                    players[id].strafeLeft = true;
+                    players[id].strafeRight = false;
+                }
+                if (func === "right")
+                {
+                    players[id].strafeLeft = false;
+                    players[id].strafeRight = true;
+                }
             }
         }
     });
@@ -284,12 +326,12 @@ io.on("connection", (socket) => {
     socket.on('updateServer', async function(msg) {  // MAIN LOOP
         let id = msg.id;
         mouse[id] = {x: msg.mouse.x, y: msg.mouse.y};
+        playerAngle[id] = msg.playerAngle;
         FPS = 60;//msg.fps;
         frameTickTime = 1000 / FPS;//msg.frameTickTime;
         zoom[id] = msg.worldZoom;
         winCenterX[id] = msg.winCenterX;
         winCenterY[id] = msg.winCenterY;
-        //await loopWorld(id, mouse, FPS, frameTickTime);
     });
 
     socket.on('deRenderMap', function(data) {
@@ -315,19 +357,19 @@ io.on("connection", (socket) => {
 
 async function loopWorld()
 {
-    //await loopWorld(id, mouse, FPS, frameTickTime);
     if (misc.isDefined(players))
     {
         let newMapData = [];
         for (let id in players)
         {
+            //misc.dump(players[id]);
             let mapGenData = false;
             let mapDataSent;
             if (misc.isDefined(players[id]))
             {
+                //dump(mouse);
                 players[id].mouse = mouse[id];
                 let pos = {x: physics.player.body[id].position[0], y: physics.player.body[id].position[1]};
-                //dump(id + " | " + players[id].body.position[0] + " : " + players[id].body.position[1]);
                 let mouseAngle = misc.angle(pos, mouse[id]);
                 let angleDist = misc.angleDist(mouseAngle, physics.player.body[id].angle);
                 let turnDir = misc.angleMoveDir(mouseAngle, physics.player.body[id].angle);
@@ -421,12 +463,26 @@ async function loopWorld()
                     mapDataSent[i].shadowRotation = shadowData.rotation;
                 }
                 newMapData[id] = mapDataSent;
+                let playerUpdatePollingFrames = parseInt((playerUpdatePollingDelay / frameTickTime).toFixed(0));
+                if (playerUpdatePollingFrames === 0)
+                    playerUpdatePollingFrames = 1;
+                let mapUpdatePollingFrames = parseInt((mapUpdatePollingDelay / frameTickTime).toFixed(0));
+                if (mapUpdatePollingFrames === 0)
+                    mapUpdatePollingFrames = 1;
+                if (frames % playerUpdatePollingFrames === 0)
+                {
+                    io.emit("clientPlayerUpdate", {
+                        players: players,
+                    });
+                }
+                if (frames % mapUpdatePollingFrames === 0)
+                {
+                    io.emit("clientMapUpdate", {
+                        mapData: newMapData[id],
+                    });
+                }
             }
         }
-        io.emit("serverUpdate", {
-            mapData: newMapData,
-            players: players,
-        });
     }
     lastFrameTime = misc.now();
 }
