@@ -4,3 +4,5 @@ Uses Discord for player account authentication.<br>
 This game is not yet complete!
 
 Working Demo: https://catacomb.online (Website source code: https://github.com/Vzotorp/Catacomb-Online-Client)
+
+Join us on Discord: https://discord.gg/nvQzTeRM7s
