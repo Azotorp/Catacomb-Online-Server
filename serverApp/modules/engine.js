@@ -220,10 +220,10 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
     for (let a in angle)
     {
         let endPos = {
-            x: origin.x + Math.cos(angle[a]) * 99999999,
-            y: origin.y + Math.sin(angle[a]) * 99999999,
+            x: origin.x + Math.cos(angle[a]) * 999999,
+            y: origin.y + Math.sin(angle[a]) * 999999,
         };
-        fovScanPos.push(physics.castFOVRay(origin, endPos));
+        fovScanPos.push(physics.castFOVRay(id, origin, endPos));
     }
     players[id].fovScanPath = fovScanPos;
 }

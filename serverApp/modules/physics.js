@@ -25,11 +25,7 @@ let physics = {
         frictionGravity: 10,
         //islandSplit : true,
     }),
-    playerFOVRayCast: {
-        result: {},
-        hitPoint: {},
-        rayClosest: {},
-    },
+    playerFOVRayCast: {},
 };
 
 
@@ -125,9 +121,9 @@ function clearAllWallBodies()
     }
 }
 
-function castFOVRay(origin, endPos)
+function castFOVRay(id, origin, endPos)
 {
-    physics.playerFOVRayCast = {
+    physics.playerFOVRayCast[id] = {
         result: new p2.RaycastResult(),
         hitPoint: p2.vec2.create(),
         rayClosest: new p2.Ray({
@@ -137,16 +133,17 @@ function castFOVRay(origin, endPos)
         }),
     };
 
-    p2.vec2.copy(physics.playerFOVRayCast.rayClosest.from, [origin.x, origin.y]);
-    p2.vec2.copy(physics.playerFOVRayCast.rayClosest.to, [endPos.x, endPos.y]);
-    physics.playerFOVRayCast.rayClosest.update();
-    physics.world.raycast(physics.playerFOVRayCast.result, physics.playerFOVRayCast.rayClosest);
-    physics.playerFOVRayCast.result.getHitPoint(physics.playerFOVRayCast.hitPoint, physics.playerFOVRayCast.rayClosest);
-    if (physics.playerFOVRayCast.result.body !== null)
+    p2.vec2.copy(physics.playerFOVRayCast[id].rayClosest.from, [origin.x, origin.y]);
+    p2.vec2.copy(physics.playerFOVRayCast[id].rayClosest.to, [endPos.x, endPos.y]);
+    physics.playerFOVRayCast[id].rayClosest.update();
+    physics.world.raycast(physics.playerFOVRayCast[id].result, physics.playerFOVRayCast[id].rayClosest);
+    physics.playerFOVRayCast[id].result.getHitPoint(physics.playerFOVRayCast[id].hitPoint, physics.playerFOVRayCast[id].rayClosest);
+    //physics.playerFOVRayCast[id].result.reset();
+    if (physics.playerFOVRayCast[id].result.body !== null)
     {
         return {
-            x: physics.playerFOVRayCast.hitPoint[0],
-            y: -physics.playerFOVRayCast.hitPoint[1],
+            x: physics.playerFOVRayCast[id].hitPoint[0],
+            y: -physics.playerFOVRayCast[id].hitPoint[1],
         };
     } else {
         return {
@@ -154,6 +151,11 @@ function castFOVRay(origin, endPos)
             y: -endPos.y,
         };
     }
+}
+
+function deleteRayCast(id)
+{
+    delete physics.playerFOVRayCast[id];
 }
 
 module.exports = {
@@ -171,4 +173,5 @@ module.exports = {
     deletePlayerBody: deletePlayerBody,
     clearAllWallBodies: clearAllWallBodies,
     castFOVRay: castFOVRay,
+    deleteRayCast: deleteRayCast,
 };

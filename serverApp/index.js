@@ -139,7 +139,7 @@ io.on("connection", (socket) => {
             delete zoom[playerID];
             delete winCenterX[playerID];
             delete winCenterY[playerID];
-
+            physics.deleteRayCast(playerID);
             io.emit("userDisconnect", {
                 players: players,
                 playerID: playerID,
@@ -341,13 +341,16 @@ io.on("connection", (socket) => {
         {
             if (misc.isDefined(mapData[id][deRenderTile[i]]))
             {
+                /* FIX RAYSCAN FOV
+                only delete wallbody if no player in range
+                */
                 let deRenderedID = deRenderTile[i];
                 mapData[id][deRenderTile[i]].chunkLoaded = false;
                 mapData[id][deRenderTile[i]].chunkRendered = false;
                 mapData[id][deRenderTile[i]].bodyID = false;
                 if (misc.isDefined(physics.wall.body[deRenderedID]))
                 {
-                    physics.deleteWallBody(deRenderedID);
+                    //physics.deleteWallBody(deRenderedID);
                 }
             }
         }
