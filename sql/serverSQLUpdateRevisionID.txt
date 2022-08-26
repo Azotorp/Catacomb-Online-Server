@@ -1,0 +1,4 @@
+This file will track the current revision number of the server database.
+First run the database.sql file into the server database then the subsequent updates in the update folder in the order of the number (#.sql) up and including to the revision number you see printed below.
+
+UPDATE REVISION NUMBER: 1

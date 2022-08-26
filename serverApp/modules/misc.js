@@ -262,6 +262,24 @@ function getXYPos(xyKey)
     return {x: x, y: y};
 }
 
+function genNewID(length, options = {upper: true, lower: true, numbers: true, symbols: false}) {
+    let result = "";
+    let char = "";
+    if (options.upper)
+        char += "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    if (options.lower)
+        char += "abcdefghijklmnopqrstuvwxyz";
+    if (options.numbers)
+        char += "0123456789";
+    if (options.symbols)
+        char += "~!@#$%^&*()-_+={}/.,:;[]?";
+    let charLength = char.length;
+    for (let i = 0; i < length; i++) {
+        result += char.charAt(Math.floor(Math.random() * charLength));
+    }
+    return result;
+}
+
 module.exports = {
     dump: dump,
     rng: rng,
@@ -288,4 +306,5 @@ module.exports = {
     distance: distance,
     getXYKey: getXYKey,
     getXYPos: getXYPos,
+    genNewID: genNewID,
 };

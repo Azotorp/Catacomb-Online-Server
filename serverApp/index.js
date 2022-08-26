@@ -9,6 +9,8 @@ const misc = require("./modules/misc.js");
 const physics = require("./modules/physics.js");
 const map = require("./modules/map.js");
 const engine = require("./modules/engine.js");
+const player = require("./modules/player.js");
+const zombie = require("./modules/zombie.js");
 const stringy = require("./modules/circular.js");
 const settings = require("./modules/settings.js");
 const serverSQLPool = sql.serverSQLConnect();
@@ -18,52 +20,46 @@ const httpServer = createServer({
     passphrase: generalConfig.sslPrivateKeyPassPhrase,
 });
 
-let players = {};
-let newPlayerID = 0;
-
 const io = new Server(httpServer, {
     cors: {
         origin: "https://" + generalConfig.clientHostDomainName,
     }
 });
 
+let playerData = {
+    playerIDs: {},
+    players: {},
+    mapData: {},
+    clientData: {
+        winCenterX: {},
+        winCenterY: {},
+        zoom: {},
+        mouse: {},
+        playerAngle: {},
+        fps: {},
+        frameTickTime: {},
+        uuid: {},
+    },
+};
+
+let zombies = {};
+let newZombieID = 0;
+
 let serverRunning = false;
 let playerUpdatePollingDelay = 0;
 let mapUpdatePollingDelay = 0;
 let inputUpdatePollingDelay = 0;
 let playerScale = 1;
-let realWorldScale = 0.00761461306 / playerScale; // meters per pixel
-let accessLevels = {};
-let accessLevelsIds = [];
-let FPS = 60;
-let frameTickTime = 1000 / FPS;
+let worldScaleConstant = 0.00761461306;
+let realWorldScale = worldScaleConstant / playerScale; // meters per pixel
+let physicsLoopFrequency = 66;
+let physicsLoopFrameTickTime = 1000 / physicsLoopFrequency;
 let frames = 0;
-let mapData = [];
-let SETTINGS = {}
+let SETTINGS = {};
 let gridSize;
 let mapSize = {};
-let winCenterX = {};
-let winCenterY = {};
-let zoom = {};
 let lastFrameTime = misc.now();
 let walls = [];
-let mouse = {};
-let playerAngle = {};
-sql.qry(serverSQLPool, "select * from `access_levels` order by `level`", [], function (data) {
-
-    for (let k in data)
-    {
-        if (data.hasOwnProperty(k))
-        {
-            accessLevels[data[k].rank] = {
-                rank: data[k].rank,
-                level: data[k].level,
-                maxInstances: data[k].max_instances,
-            };
-            accessLevelsIds.push(data[k].rank);
-        }
-    }
-});
 
 physics.world.on("impact",function(evt) {
     let bodyA = evt.bodyA, bodyB = evt.bodyB;
@@ -85,7 +81,7 @@ physics.world.on("impact",function(evt) {
     }
     if (bodyA.object === "player" && bodyB.object === "player")
     {
-        io.emit("playerImpact", players);
+        io.emit("playerImpact", playerData.players);
     }
 });
 
@@ -94,10 +90,13 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     serverRunning = true;
     sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
 
-    SETTINGS = await settings.qrySettings();
+    SETTINGS = await settings.getSettings();
+    physicsLoopFrequency = parseInt(SETTINGS.physicsLoopFrequency);
+    physicsLoopFrameTickTime = 1000 / physicsLoopFrequency;
     playerScale = parseFloat(SETTINGS.playerScale);
     gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
-    realWorldScale = 0.00761461306 / playerScale; // meters per pixel
+    worldScaleConstant = parseFloat(SETTINGS.worldScaleConstant);
+    realWorldScale = worldScaleConstant / playerScale; // meters per pixel
     mapSize = {
         x: parseInt(SETTINGS.mapWidth),
         y: parseInt(SETTINGS.mapHeight),
@@ -105,7 +104,7 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     playerUpdatePollingDelay = SETTINGS.playerUpdatePollingDelay;
     mapUpdatePollingDelay = SETTINGS.mapUpdatePollingDelay;
     inputUpdatePollingDelay = SETTINGS.inputUpdatePollingDelay;
-
+    //map.breakDeadEnds();
     /*
     let genMapData = await map.generateMap(mapSize.x, mapSize.y);
     let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
@@ -123,201 +122,102 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
 
 io.on("connection", (socket) => {
     let uuid = misc.sha256(socket.id);
-    dump("User "+uuid+" connected.");
-    socket.on('disconnect', () => {
-        dump("User "+uuid+" disconnected.");
-        let data = misc.filterObj2(players, "uuid", uuid);
-        dump(data);
-        if (misc.objLength(data) > 0)
+    let uniqueID = false;
+    while (!uniqueID)
+    {
+        let id = "" + misc.genNewID(10, {upper: false, lower: true, numbers: false, symbols: false});
+        if (Object.values(playerData.playerIDs).indexOf(id) === -1)
         {
-            let playerID = data.playerID;
-            physics.deletePlayerBody(playerID);
-            delete players[playerID];
-            delete mapData[playerID];
-            delete mouse[playerID];
-            delete playerAngle[playerID];
-            delete zoom[playerID];
-            delete winCenterX[playerID];
-            delete winCenterY[playerID];
-            physics.deleteRayCast(playerID);
-            io.emit("userDisconnect", {
-                players: players,
-                playerID: playerID,
-            });
-            sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'N' where `user_id` = ?", [misc.time(), data.authUserID], function() {});
-            sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` - 1 where `user_id` = ?", [data.authUserID], function() {});
-            sql.qry2(serverSQLPool, "select `open_instances` from `user_auth` where `user_id` = ?", [data.authUserID], function(result) {
-                if (result < 0)
-                {
-                    sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = 0 where `user_id` = ?", [data.authUserID], function() {});
-                }
-            });
+            playerData.playerIDs[uuid] = id;
+            uniqueID = true;
+            break;
         }
+    }
+    let playerID = playerData.playerIDs[uuid];
+    dump("User " + playerID + " connected.");
+    socket.on('disconnect', () => {
+        dump("User " + playerID + " disconnected.");
+        player.deletePlayer(io, playerData, playerID);
     });
 
-    socket.on("clientReady", async function(data) {
-        let auth = data.auth;
-        //dump(data);
-        let avatar = data.avatar;
-        winCenterX[newPlayerID] = data.winCenterX;
-        winCenterY[newPlayerID] = data.winCenterY;
-        zoom[newPlayerID] = data.zoom;
-        mouse[newPlayerID] = {x: data.mouse.x, y: data.mouse.y};
-        playerAngle[newPlayerID] = data.playerAngle;
-        sql.qry2(serverSQLPool, "select * from `user_auth` where `user_id` = ?", [auth.userID], async function(result) {
-            let instances = result.open_instances;
-            let access = misc.filterObj2(accessLevels, "level", auth.level);
-            if (instances < access.maxInstances || access.maxInstances === -1)
-            {
-                let accTimer = (1 / FPS) * 1000;
-                let playerData = {
-                    authLevel: auth.level,
-                    authUsername: auth.username,
-                    authUserID: auth.userID,
-                    //authIP: auth.ip,
-                    authKey: auth.key,
-                    avatar: avatar,
-                    playerID: newPlayerID,
-                    uuid: uuid,
-                    turnSpeed: 720,
-                    forwardsAcceleration: 2 / realWorldScale,
-                    forwardsDeAcceleration: 3 / realWorldScale,
-                    backwardsAcceleration: 0.9 / realWorldScale,
-                    backwardsDeAcceleration: 4 / realWorldScale,
-                    strafeAcceleration: 2 / realWorldScale,
-                    strafeDeAcceleration: 2 / realWorldScale,
-                    forwardsMaxSpeed: 1.56 / realWorldScale,
-                    backwardsMaxSpeed: 1 / realWorldScale,
-                    strafeMaxSpeed: 1.5 / realWorldScale,
-                    runBonusSpeed: 1,
-                    runMinBonusSpeed: 1,
-                    runMaxBonusSpeed: 2.35,
-                    runBonusSpeedIncMulti: 1.01,
-                    currentSpeed: 0,
-                    forwardsSpeed: 0,
-                    backwardsSpeed: 0,
-                    strafeLeftSpeed: 0,
-                    strafeRightSpeed: 0,
-                    accelerationNextThink: misc.now() + accTimer,
-                    momentumDir: 0,
-                    forwards: false,
-                    backwards: false,
-                    strafeLeft: false,
-                    strafeRight: false,
-                    isRunning: false,
-                    isTipToe: false,
-                    stopPlayerTurn: false,
-                    mouse: mouse[newPlayerID],
-                };
-                let pos = {x: 0, y: 0};
-                physics.newPlayerBody(newPlayerID, pos, data.player.width, data.player.height);
-                playerData.body = {
-                    position: [physics.player.body[newPlayerID].position[0], physics.player.body[newPlayerID].position[1]],
-                    velocity: [0, 0],
-                    angle: physics.player.body[newPlayerID].angle,
-                    angularVelocity: physics.player.body[newPlayerID].angularVelocity,
-                };
-                playerData.chunkPos = misc.calcChunkPos(playerData.body.position, gridSize);
-                players[newPlayerID] = playerData;
-                sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), auth.userID], function() {});
-                sql.qry(serverSQLPool, "update `user_auth` set `open_instances` = `open_instances` + 1 where `user_id` = ?", [auth.userID], function() {});
-                let maxChunkLoadX = Math.ceil(((winCenterX * zoom) - (gridSize / 2)) / gridSize) + 1;
-                let maxChunkLoadY = Math.ceil(((winCenterY * zoom) - (gridSize / 2)) / gridSize) + 1;
-                //dump(data.auth);
-                mapData[newPlayerID] = await map.loadMapData({x: players[newPlayerID].chunkPos[0], y: players[newPlayerID].chunkPos[1]}, {x: maxChunkLoadX, y: maxChunkLoadY});
-                for (let i in mapData[newPlayerID])
-                {
-                    let pos = {x: mapData[newPlayerID][i].chunkPosX, y: mapData[newPlayerID][i].chunkPosY};
-                    let shadowData = map.calcShadow(pos, mapData[newPlayerID]);
-                    mapData[newPlayerID][i].shadow = shadowData.shadow;
-                    mapData[newPlayerID][i].shadowRotation = shadowData.rotation;
-                }
-                dump("New Player: "+newPlayerID);
-
-                engine.updatePlayerPos(players, newPlayerID, FPS, gridSize, mapData);
-
-                io.emit("newPlayer", {
-                    playerData: playerData,
-                    players: players,
-                    newPlayerID: newPlayerID,
-                    mapData: mapData[newPlayerID],
-                });
-                newPlayerID++;
-                //dump(misc.now() - startTime);
-            } else {
-                io.emit("maxInstances", uuid);
-            }
-        });
+    socket.on("clientReady", async function(clientReadyData) {
+        let newData = await player.newPlayer(io, uuid, playerData, clientReadyData);
+        playerData = {
+            playerIDs: newData.playerIDs,
+            players: newData.players,
+            mapData: newData.mapData,
+            clientData: newData.clientData,
+        };
     });
 
     socket.on('updatePos', async function(msg) {
         let func = msg.func;
         let id = msg.id;
-        if (misc.isDefined(players[id]))
+        if (misc.isDefined(playerData.players[id]))
         {
-            let inputUpdatePollingFrames = parseInt((inputUpdatePollingDelay / frameTickTime).toFixed(0));
+            let inputUpdatePollingFrames = parseInt((inputUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
             if (inputUpdatePollingFrames === 0)
                 inputUpdatePollingFrames = 1;
             if (frames % inputUpdatePollingFrames === 0)
             {
-                sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), players[id].authUserID], function() {});
+                sql.qry(serverSQLPool, "update `user_auth` set `last_ping` = ?, `online` = 'Y' where `user_id` = ?", [misc.time(), playerData.players[id].authUserID], function() {});
                 if (func === "run")
                 {
-                    if (players[id].isTipToe)
-                        players[id].isTipToe = false;
-                    players[id].isRunning = true;
+                    if (playerData.players[id].isTipToe)
+                        playerData.players[id].isTipToe = false;
+                    playerData.players[id].isRunning = true;
                 }
                 if (func === "runStop")
                 {
-                    players[id].isRunning = false;
+                    playerData.players[id].isRunning = false;
                 }
                 if (func === "tipToe")
                 {
-                    if (players[id].isRunning)
-                        players[id].isRunning = false;
-                    players[id].isTipToe = true;
+                    if (playerData.players[id].isRunning)
+                        playerData.players[id].isRunning = false;
+                    playerData.players[id].isTipToe = true;
                 }
                 if (func === "tipToeStop")
                 {
-                    players[id].isTipToe = false;
+                    playerData.players[id].isTipToe = false;
                 }
                 if (func === "upStop")
                 {
-                    players[id].forwards = false;
-                    players[id].backwards = false;
+                    playerData.players[id].forwards = false;
+                    playerData.players[id].backwards = false;
                 }
                 if (func === "downStop")
                 {
-                    players[id].forwards = false;
-                    players[id].backwards = false;
+                    playerData.players[id].forwards = false;
+                    playerData.players[id].backwards = false;
                 }
                 if (func === "leftStop")
                 {
-                    players[id].strafeLeft = false;
+                    playerData.players[id].strafeLeft = false;
                 }
                 if (func === "rightStop")
                 {
-                    players[id].strafeRight = false;
+                    playerData.players[id].strafeRight = false;
                 }
                 if (func === "up")
                 {
-                    players[id].forwards = true;
-                    players[id].backwards = false;
+                    playerData.players[id].forwards = true;
+                    playerData.players[id].backwards = false;
                 }
                 if (func === "down")
                 {
-                    players[id].forwards = false;
-                    players[id].backwards = true;
+                    playerData.players[id].forwards = false;
+                    playerData.players[id].backwards = true;
                 }
                 if (func === "left")
                 {
-                    players[id].strafeLeft = true;
-                    players[id].strafeRight = false;
+                    playerData.players[id].strafeLeft = true;
+                    playerData.players[id].strafeRight = false;
                 }
                 if (func === "right")
                 {
-                    players[id].strafeLeft = false;
-                    players[id].strafeRight = true;
+                    playerData.players[id].strafeLeft = false;
+                    playerData.players[id].strafeRight = true;
                 }
             }
         }
@@ -325,29 +225,29 @@ io.on("connection", (socket) => {
 
     socket.on('updateServer', async function(msg) {  // MAIN LOOP
         let id = msg.id;
-        mouse[id] = {x: msg.mouse.x, y: msg.mouse.y};
-        playerAngle[id] = msg.playerAngle;
-        FPS = 60;//msg.fps;
-        frameTickTime = 1000 / FPS;//msg.frameTickTime;
-        zoom[id] = msg.worldZoom;
-        winCenterX[id] = msg.winCenterX;
-        winCenterY[id] = msg.winCenterY;
+        playerData.clientData.mouse[id] = {x: msg.mouse.x, y: msg.mouse.y};
+        playerData.clientData.playerAngle[id] = msg.playerAngle;
+        playerData.clientData.fps[id] = msg.fps;
+        playerData.clientData.frameTickTime[id] = msg.frameTickTime;
+        playerData.clientData.zoom[id] = msg.worldZoom;
+        playerData.clientData.winCenterX[id] = msg.winCenterX;
+        playerData.clientData.winCenterY[id] = msg.winCenterY;
     });
 
     socket.on('deRenderMap', function(data) {
         let deRenderTile = data.deRenderTile;
-        let id = parseInt(data.playerID);
+        let id = data.playerID;
         for (let i in deRenderTile)
         {
-            if (misc.isDefined(mapData[id][deRenderTile[i]]))
+            if (misc.isDefined(playerData.mapData[id][deRenderTile[i]]))
             {
                 /* FIX RAYSCAN FOV
                 only delete wallbody if no player in range
                 */
                 let deRenderedID = deRenderTile[i];
-                mapData[id][deRenderTile[i]].chunkLoaded = false;
-                mapData[id][deRenderTile[i]].chunkRendered = false;
-                mapData[id][deRenderTile[i]].bodyID = false;
+                playerData.mapData[id][deRenderTile[i]].chunkLoaded = false;
+                playerData.mapData[id][deRenderTile[i]].chunkRendered = false;
+                playerData.mapData[id][deRenderTile[i]].bodyID = false;
                 if (misc.isDefined(physics.wall.body[deRenderedID]))
                 {
                     //physics.deleteWallBody(deRenderedID);
@@ -360,33 +260,33 @@ io.on("connection", (socket) => {
 
 async function loopWorld()
 {
-    if (misc.isDefined(players))
+    if (misc.isDefined(playerData.players))
     {
         let newMapData = [];
-        for (let id in players)
+        for (let id in playerData.players)
         {
-            //misc.dump(players[id]);
+            //misc.dump(playerData.players[id]);
             let mapGenData = false;
             let mapDataSent;
-            if (misc.isDefined(players[id]))
+            if (misc.isDefined(playerData.players[id]))
             {
                 //dump(mouse);
-                players[id].mouse = mouse[id];
+                playerData.players[id].mouse = playerData.clientData.mouse[id];
                 let pos = {x: physics.player.body[id].position[0], y: physics.player.body[id].position[1]};
-                let mouseAngle = misc.angle(pos, mouse[id]);
+                let mouseAngle = misc.angle(pos, playerData.clientData.mouse[id]);
                 let angleDist = misc.angleDist(mouseAngle, physics.player.body[id].angle);
                 let turnDir = misc.angleMoveDir(mouseAngle, physics.player.body[id].angle);
-                if (misc.toDeg(angleDist) > players[id].turnSpeed / FPS)
+                if (misc.toDeg(angleDist) > playerData.players[id].turnSpeed / physicsLoopFrequency)
                 {
-                    physics.player.body[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
+                    physics.player.body[id].angularVelocity = misc.toRad(playerData.players[id].turnSpeed) * turnDir;
                 } else {
                     physics.player.body[id].angularVelocity = 0;
                     physics.player.body[id].angle = mouseAngle;
                 }
-                let maxChunkLoadX = Math.ceil(((winCenterX[id] * 1) - (gridSize / 2)) / gridSize) + 2;
-                let maxChunkLoadY = Math.ceil(((winCenterY[id] * 1) - (gridSize / 2)) / gridSize) + 2;
-                let playerChunkPos = {x: players[id].chunkPos[0], y: players[id].chunkPos[1]};
-                mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
+                let maxChunkLoadX = Math.ceil(((playerData.clientData.winCenterX[id] * 1) - (gridSize / 2)) / gridSize) + 2;
+                let maxChunkLoadY = Math.ceil(((playerData.clientData.winCenterY[id] * 1) - (gridSize / 2)) / gridSize) + 2;
+                let playerChunkPos = {x: playerData.players[id].chunkPos[0], y: playerData.players[id].chunkPos[1]};
+                playerData.mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
                 for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
                 {
                     for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
@@ -395,9 +295,9 @@ async function loopWorld()
                         let y = playerChunkPos.y + sy;
                         let pos = {x: x, y: y};
                         let index = misc.getXYKey(pos);
-                        if (misc.isDefined(mapData[id][index]))
+                        if (misc.isDefined(playerData.mapData[id][index]))
                         {
-                            mapData[id][index].chunkLoaded = true;
+                            playerData.mapData[id][index].chunkLoaded = true;
                             let northWall = false;
                             let northPos = {x: pos.x, y: pos.y + 1};
                             let northXYKey = misc.getXYKey(northPos);
@@ -410,25 +310,25 @@ async function loopWorld()
                             let westWall = false;
                             let westPos = {x: pos.x - 1, y: pos.y};
                             let westXYKey = misc.getXYKey(westPos);
-                            if (misc.isDefined(mapData[id][northXYKey]) && mapData[id][northXYKey].tile === "wall")
+                            if (misc.isDefined(playerData.mapData[id][northXYKey]) && playerData.mapData[id][northXYKey].tile === "wall")
                                 northWall = true;
-                            if (misc.isDefined(mapData[id][southXYKey]) && mapData[id][southXYKey].tile === "wall")
+                            if (misc.isDefined(playerData.mapData[id][southXYKey]) && playerData.mapData[id][southXYKey].tile === "wall")
                                 southWall = true;
-                            if (misc.isDefined(mapData[id][eastXYKey]) && mapData[id][eastXYKey].tile === "wall")
+                            if (misc.isDefined(playerData.mapData[id][eastXYKey]) && playerData.mapData[id][eastXYKey].tile === "wall")
                                 eastWall = true;
-                            if (misc.isDefined(mapData[id][westXYKey]) && mapData[id][westXYKey].tile === "wall")
+                            if (misc.isDefined(playerData.mapData[id][westXYKey]) && playerData.mapData[id][westXYKey].tile === "wall")
                                 westWall = true;
 
-                            if (mapData[id][index].tile === "floor" && northWall && southWall && eastWall && westWall)
+                            if (playerData.mapData[id][index].tile === "floor" && northWall && southWall && eastWall && westWall)
                             {
-                                mapData[id][index].tile = "wall";
+                                playerData.mapData[id][index].tile = "wall";
                                 sql.qry(serverSQLPool, "UPDATE `map` SET `tile` = 'wall' WHERE `xyKey` = ?", [index], function () {});
                             }
 
-                            if (mapData[id][index].tile === "wall")
+                            if (playerData.mapData[id][index].tile === "wall")
                             {
-                                let wallBody = misc.calcGlobalPos({x: mapData[id][index].chunkPosX, y: mapData[id][index].chunkPosY}, gridSize);
-                                mapData[id][index].bodyID = index;
+                                let wallBody = misc.calcGlobalPos({x: playerData.mapData[id][index].chunkPosX, y: playerData.mapData[id][index].chunkPosY}, gridSize);
+                                playerData.mapData[id][index].bodyID = index;
                                 physics.newWallBody(index, wallBody, gridSize, gridSize);
                                 if (index === "p0_p0")
                                 {
@@ -444,16 +344,16 @@ async function loopWorld()
                         } else {
                             let radius = {x: 0, y: 0};
                             let pos = {x: x, y: y};
-                            let gen = await map.generateMap(pos, mapData[id], radius, gridSize);
+                            let gen = await map.generateMap(pos, playerData.mapData[id], radius, gridSize);
                             mapGenData = gen.mapData;
                         }
                     }
                 }
-                mapDataSent = mapData[id];
+                mapDataSent = playerData.mapData[id];
                 if (mapGenData !== false)
                 {
                     mapDataSent = {
-                        ...mapData[id],
+                        ...playerData.mapData[id],
                         ...mapGenData,
                     };
                 }
@@ -466,16 +366,16 @@ async function loopWorld()
                     mapDataSent[i].shadowRotation = shadowData.rotation;
                 }
                 newMapData[id] = mapDataSent;
-                let playerUpdatePollingFrames = parseInt((playerUpdatePollingDelay / frameTickTime).toFixed(0));
+                let playerUpdatePollingFrames = parseInt((playerUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
                 if (playerUpdatePollingFrames === 0)
                     playerUpdatePollingFrames = 1;
-                let mapUpdatePollingFrames = parseInt((mapUpdatePollingDelay / frameTickTime).toFixed(0));
+                let mapUpdatePollingFrames = parseInt((mapUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
                 if (mapUpdatePollingFrames === 0)
                     mapUpdatePollingFrames = 1;
                 if (frames % playerUpdatePollingFrames === 0)
                 {
                     io.emit("clientPlayerUpdate", {
-                        players: players,
+                        players: playerData.players,
                     });
                 }
                 if (frames % mapUpdatePollingFrames === 0)
@@ -494,13 +394,16 @@ setImmediate(gameLoop);
 
 function gameLoop() {
     //dump(misc.rng(0,100));
-    engine.updatePlayersPos(players, FPS, gridSize, mapData);
-    loopWorld();
-    physics.world.step(1 / FPS, frameTickTime / 1000, 2);
+    if (misc.isDefined(playerData.players) && misc.objLength(playerData.players, true) > 0)
+    {
+        engine.updatePlayersPos(playerData.players, physicsLoopFrequency, gridSize, playerData.mapData);
+        loopWorld();
+    }
+    physics.world.step(1 / physicsLoopFrequency, physicsLoopFrameTickTime / 1000, 2);
     frames++;
     setTimeout(function () {
         setImmediate(gameLoop);
-    }, frameTickTime);
+    }, physicsLoopFrameTickTime);
 }
 
 function dump(input)

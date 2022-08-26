@@ -6,7 +6,7 @@ const serverSQLPool = sql.serverSQLConnect();
 
 async function loadMapData(pos =  {x: 0, y: 0}, radius= {x: 0, y: 0})
 {
-    let SETTINGS = await settings.qrySettings();
+    let SETTINGS = await settings.getSettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
     let tilesData = {};
@@ -119,10 +119,6 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     {
                         mapData[xyKey].tile = "wall";
                     }
-
-
-
-
 
                     sqlQry.push("(?, ?, ?, ?, ?)");
                     param.push(xyKey);
@@ -668,9 +664,148 @@ function calcShadow(pos, mapData)
     };
 }
 
+async function breakDeadEnds()
+{
+    let mapData = await loadMapData();
+    let bounds = {minX: 0, minY: 0, maxX: 0, maxY: 0};
+    let checked = {};
+    for (let id in mapData)
+    {
+        checked[id] = false;
+        let chunkPos = {
+            x: mapData[id].chunkPosX,
+            y: mapData[id].chunkPosY,
+        };
+        if (chunkPos.x < bounds.minX)
+            bounds.minX = chunkPos.x;
+        if (chunkPos.y < bounds.minY)
+            bounds.minY = chunkPos.y;
+        if (chunkPos.x > bounds.maxX)
+            bounds.maxX = chunkPos.x;
+        if (chunkPos.y > bounds.maxY)
+            bounds.maxY = chunkPos.y;
+    }
+    let pos = {x: 0, y: 0};
+    let lastPos = {x: 0, y: 0};
+    let startTime = misc.now();
+    let dig = true;
+    let UP = 0;
+    let DOWN = 1;
+    let LEFT = 2;
+    let RIGHT = 3;
+    let dir = RIGHT;
+    let lastDir = RIGHT;
+    let possibleDir = [UP, DOWN, LEFT, RIGHT];
+    let reverseDir = [DOWN, UP, RIGHT, LEFT];
+    let changeDir = function(moveDir)
+    {
+        let xyKey;
+        let tileAt;
+        let moved = false;
+        if (moveDir === UP)
+        {
+            if (pos.y + 1 < bounds.maxY)
+            {
+                xyKey = misc.getXYKey({x: pos.x, y: pos.y + 1});
+                tileAt = mapData[xyKey].tile;
+                if (tileAt === "wall")
+                {
+                    let index = possibleDir.indexOf(moveDir);
+                    if (index !== -1)
+                        possibleDir.splice(index, 1);
+                } else {
+                    pos.y++;
+                    moved = true;
+                }
+            } else {
+                let index = possibleDir.indexOf(moveDir);
+                if (index !== -1)
+                    possibleDir.splice(index, 1);
+            }
+        }
+        if (moveDir === DOWN)
+        {
+            if (pos.y - 1 > bounds.minY)
+            {
+                xyKey = misc.getXYKey({x: pos.x, y: pos.y - 1});
+                tileAt = mapData[xyKey].tile;
+                if (tileAt === "wall")
+                {
+                    let index = possibleDir.indexOf(moveDir);
+                    if (index !== -1)
+                        possibleDir.splice(index, 1);
+                } else {
+                    pos.y--;
+                    moved = true;
+                }
+            } else {
+                let index = possibleDir.indexOf(moveDir);
+                if (index !== -1)
+                    possibleDir.splice(index, 1);
+            }
+        }
+        if (moveDir === RIGHT)
+        {
+            if (pos.x + 1 < bounds.maxX)
+            {
+                xyKey = misc.getXYKey({x: pos.x + 1, y: pos.y});
+                tileAt = mapData[xyKey].tile;
+                if (tileAt === "wall")
+                {
+                    let index = possibleDir.indexOf(moveDir);
+                    if (index !== -1)
+                        possibleDir.splice(index, 1);
+                } else {
+                    pos.x++;
+                    moved = true;
+                }
+            } else {
+                let index = possibleDir.indexOf(moveDir);
+                if (index !== -1)
+                    possibleDir.splice(index, 1);
+            }
+        }
+        if (moveDir === LEFT)
+        {
+            if (pos.x - 1 > bounds.minX)
+            {
+                xyKey = misc.getXYKey({x: pos.x - 1, y: pos.y});
+                tileAt = mapData[xyKey].tile;
+                if (tileAt === "wall")
+                {
+                    let index = possibleDir.indexOf(moveDir);
+                    if (index !== -1)
+                        possibleDir.splice(index, 1);
+                } else {
+                    pos.x--;
+                    moved = true;
+                }
+            } else {
+                let index = possibleDir.indexOf(moveDir);
+                if (index !== -1)
+                    possibleDir.splice(index, 1);
+            }
+        }
+        return moved;
+    }
+    while (dig)
+    {
+        lastPos = pos;
+        lastDir = dir;
+        possibleDir = [UP, DOWN, LEFT, RIGHT];
+        if (changeDir(dir))
+        {
+            let xyKey = misc.getXYKey(pos);
+            let tileAt = mapData[xyKey].tile;
+            checked[xyKey] = tileAt;
+        }
+
+    }
+}
+
 async function generateMaze(dimX, dimY, orgX = false, orgY = false)
 {
-    let SETTINGS = await settings.qrySettings();
+    let SETTINGS = await settings.getSettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
 
@@ -834,5 +969,6 @@ module.exports = {
     loadMapData: loadMapData,
     generateMap: generateMap,
     calcShadow: calcShadow,
+    breakDeadEnds: breakDeadEnds,
     generateMaze: generateMaze,
 };

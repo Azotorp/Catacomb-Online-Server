@@ -97,12 +97,9 @@ function deletePlayerBody(id)
 {
     if (misc.isDefined(physics.player.body[id]))
     {
-        if (misc.isDefined(physics.player.body[id]))
-        {
-            physics.world.removeBody(physics.player.body[id]);
-            delete physics.player.body[id];
-            delete physics.player.shape[id];
-        }
+        physics.world.removeBody(physics.player.body[id]);
+        delete physics.player.body[id];
+        delete physics.player.shape[id];
     }
 }
 
