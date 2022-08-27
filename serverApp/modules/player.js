@@ -26,6 +26,7 @@ async function newPlayer(io, uuid, playerData, clientReadyData)
     clientData.fps[newPlayerID] = clientReadyData.fps;
     clientData.frameTickTime[newPlayerID] = clientReadyData.frameTickTime;
     clientData.uuid[newPlayerID] = uuid;
+    clientData.playerOutlinePath = clientReadyData.playerOutlinePath;
     let physicsLoopFrequency = parseInt(SETTINGS.physicsLoopFrequency);
     let physicsLoopFrameTickTime = 1000 / physicsLoopFrequency;
     let playerScale = parseFloat(SETTINGS.playerScale);
@@ -83,6 +84,7 @@ async function newPlayer(io, uuid, playerData, clientReadyData)
                     velocity: [0, 0],
                     angle: physics.player.body[newPlayerID].angle,
                     angularVelocity: physics.player.body[newPlayerID].angularVelocity,
+                    movementHistory: [],
                 };
                 newPlayerData.chunkPos = misc.calcChunkPos(newPlayerData.body.position, gridSize);
                 players[newPlayerID] = newPlayerData;

@@ -61,9 +61,11 @@ async function getNewMapID()
 }
 */
 
-async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 0)
+async function generateMap(id, pos, playerData, radius, gridSize)
 {
     return new Promise(async function(resolve, reject) {
+        let mapData = playerData.mapData[id];
+        let playerUserID = playerData.players[id].authUserID;
         let ins = "INSERT IGNORE INTO `map` (`xyKey`, `chunkPosX`, `chunkPosY`, `tile`, `seededBy`) VALUES ";
         let sqlQry = [];
         let param = [];
@@ -85,7 +87,7 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     mapData[xyKey].xyKey = xyKey;
                     mapData[xyKey].chunkLoaded = false;
                     mapData[xyKey].chunkRendered = false;
-                    if (misc.rng(0, 100, 3) <= 45)
+                    if (misc.rng(0, 100, 3) <= 35)
                     {
                         mapData[xyKey].tile = "wall";
                     } else {
@@ -93,6 +95,7 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     }
                     if (xyKey === "p0_p0")
                         mapData[xyKey].tile = "floor";
+
 
                     let northWall = false;
                     let northPos = {x: pos.x, y: pos.y + 1};
@@ -119,6 +122,16 @@ async function generateMap(pos, mapData, radius, gridSize, playerUserID, step = 
                     {
                         mapData[xyKey].tile = "wall";
                     }
+
+
+                    for (let p in playerData.players)
+                    {
+                        if (sPos.x === playerData.players[p].chunkPos[0] && sPos.y === playerData.players[p].chunkPos[1])
+                        {
+                            mapData[xyKey].tile = "floor";
+                        }
+                    }
+
 
                     sqlQry.push("(?, ?, ?, ?, ?)");
                     param.push(xyKey);
@@ -686,7 +699,6 @@ async function breakDeadEnds()
             bounds.maxY = chunkPos.y;
     }
     let pos = {x: 0, y: 0};
-    let lastPos = {x: 0, y: 0};
     let startTime = misc.now();
     let dig = true;
     let UP = 0;
@@ -694,9 +706,6 @@ async function breakDeadEnds()
     let LEFT = 2;
     let RIGHT = 3;
     let dir = RIGHT;
-    let lastDir = RIGHT;
-    let possibleDir = [UP, DOWN, LEFT, RIGHT];
-    let reverseDir = [DOWN, UP, RIGHT, LEFT];
     let changeDir = function(moveDir)
     {
         let xyKey;
@@ -710,17 +719,14 @@ async function breakDeadEnds()
                 tileAt = mapData[xyKey].tile;
                 if (tileAt === "wall")
                 {
-                    let index = possibleDir.indexOf(moveDir);
-                    if (index !== -1)
-                        possibleDir.splice(index, 1);
+                    if (changeDir(RIGHT))
+                    dir = RIGHT;
                 } else {
                     pos.y++;
                     moved = true;
                 }
             } else {
-                let index = possibleDir.indexOf(moveDir);
-                if (index !== -1)
-                    possibleDir.splice(index, 1);
+                dir = RIGHT;
             }
         }
         if (moveDir === DOWN)
@@ -731,17 +737,13 @@ async function breakDeadEnds()
                 tileAt = mapData[xyKey].tile;
                 if (tileAt === "wall")
                 {
-                    let index = possibleDir.indexOf(moveDir);
-                    if (index !== -1)
-                        possibleDir.splice(index, 1);
+                    dir = LEFT;
                 } else {
                     pos.y--;
                     moved = true;
                 }
             } else {
-                let index = possibleDir.indexOf(moveDir);
-                if (index !== -1)
-                    possibleDir.splice(index, 1);
+                dir = LEFT;
             }
         }
         if (moveDir === RIGHT)
@@ -752,17 +754,13 @@ async function breakDeadEnds()
                 tileAt = mapData[xyKey].tile;
                 if (tileAt === "wall")
                 {
-                    let index = possibleDir.indexOf(moveDir);
-                    if (index !== -1)
-                        possibleDir.splice(index, 1);
+                    dir = DOWN;
                 } else {
                     pos.x++;
                     moved = true;
                 }
             } else {
-                let index = possibleDir.indexOf(moveDir);
-                if (index !== -1)
-                    possibleDir.splice(index, 1);
+                dir = DOWN;
             }
         }
         if (moveDir === LEFT)
@@ -773,33 +771,28 @@ async function breakDeadEnds()
                 tileAt = mapData[xyKey].tile;
                 if (tileAt === "wall")
                 {
-                    let index = possibleDir.indexOf(moveDir);
-                    if (index !== -1)
-                        possibleDir.splice(index, 1);
+                    dir = UP;
                 } else {
                     pos.x--;
                     moved = true;
                 }
             } else {
-                let index = possibleDir.indexOf(moveDir);
-                if (index !== -1)
-                    possibleDir.splice(index, 1);
+                dir = UP;
             }
         }
         return moved;
     }
     while (dig)
     {
-        lastPos = pos;
-        lastDir = dir;
-        possibleDir = [UP, DOWN, LEFT, RIGHT];
+        let xyKey = misc.getXYKey(pos);
+        let tileAt = mapData[xyKey].tile;
         if (changeDir(dir))
         {
-            let xyKey = misc.getXYKey(pos);
-            let tileAt = mapData[xyKey].tile;
             checked[xyKey] = tileAt;
+            misc.dump(xyKey + " " + tileAt);
         }
-
+        if (misc.now() - startTime > 10)
+            break;
     }
 }
 

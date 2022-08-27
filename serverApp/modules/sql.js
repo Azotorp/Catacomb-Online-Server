@@ -48,11 +48,11 @@ function qry(pool, query_str, query_var, data)
                     // results will contain the results of the query
                     // fields will contain information about the returned results fields (if any)
                 } catch (e) {
-                    console.error(e);
+                    //console.error(e);
                 }
             });
         } catch (e) {
-            console.error(e);
+            //console.error(e);
         }
         connection.release();
     });

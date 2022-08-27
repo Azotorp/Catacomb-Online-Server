@@ -229,6 +229,9 @@ function distance(obj1, obj2 = false)
 function getXYKey(pos)
 {
     let xyKey = "";
+    if (!isObj(pos))
+        pos = {x: pos[0], y: pos[1]};
+
     if (pos.x >= 0)
     {
         xyKey += "p" + pos.x;
@@ -244,7 +247,7 @@ function getXYKey(pos)
     return xyKey;
 }
 
-function getXYPos(xyKey)
+function getXYPos(xyKey, objReturn = true)
 {
     let data = xyKey.split("_");
     let xData = data[0];
@@ -259,7 +262,10 @@ function getXYPos(xyKey)
     {
         y = parseInt(yData.substr(1)) * -1;
     }
-    return {x: x, y: y};
+    if (objReturn)
+        return {x: x, y: y};
+    else
+        return [x, y];
 }
 
 function genNewID(length, options = {upper: true, lower: true, numbers: true, symbols: false}) {

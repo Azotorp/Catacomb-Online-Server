@@ -42,6 +42,18 @@ function newPlayerBody(playerID, pos, width, height)
         position: [pos.x, pos.y],
         angle: misc.toRad(misc.rng(0, 360)),
     });
+
+    /*
+    physics.player.body[playerID].fromPolygon(outlinePath, {skipSimpleCheck: true});
+    physics.player.body[playerID].object = "player";
+    physics.player.body[playerID].objectID = playerID;
+    for (let s in physics.player.body[playerID].shapes)
+    {
+        physics.player.body[playerID].shapes[s].collisionGroup = FLAG.PLAYER;
+        physics.player.body[playerID].shapes[s].collisionMask = FLAG.WALL | FLAG.BULLET | FLAG.VISION_GOGGLES | FLAG.PLAYER | FLAG.ZOMBIE | FLAG.AMMO_CLIP;;
+    }
+    */
+
     physics.player.shape[playerID] = new p2.Box({
         width: width,
         height: height,

@@ -173,7 +173,25 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
     physics.player.body[id].velocity = [Math.cos(players[id].momentumDir) * players[id].currentSpeed, Math.sin(players[id].momentumDir) * players[id].currentSpeed];
     players[id].body.velocity = physics.player.body[id].velocity;
     players[id].body.angularVelocity = physics.player.body[id].angularVelocity;
-
+    players[id].body.movementHistory.push({
+        mouse: {
+            x: players[id].mouse.x,
+            y: players[id].mouse.y,
+        },
+        position: {
+            x: players[id].body.position[0],
+            y: players[id].body.position[1],
+        },
+        velocity: {
+            x: players[id].body.velocity[0],
+            y: players[id].body.velocity[1],
+        },
+        angle: players[id].body.angle,
+        angularVelocity: players[id].body.angularVelocity,
+        timestamp: Date.now() / 1000,
+    });
+    if (players[id].body.movementHistory.length > 10)
+        players[id].body.movementHistory.shift();
     let origin = {
         x: players[id].body.position[0],
         y: players[id].body.position[1],
@@ -210,6 +228,12 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
                 angle.push(angle1);
                 angle.push(angle2);
             }
+            let rays = 30;
+            for (let n = 0; n < rays; n++)
+            {
+                let angle3 = misc.toRad(360) / rays * n ;
+                angle.push(angle3);
+            }
         }
     }
 
@@ -220,8 +244,8 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
     for (let a in angle)
     {
         let endPos = {
-            x: origin.x + Math.cos(angle[a]) * 999999,
-            y: origin.y + Math.sin(angle[a]) * 999999,
+            x: origin.x + Math.cos(angle[a]) * 9999,
+            y: origin.y + Math.sin(angle[a]) * 9999,
         };
         fovScanPos.push(physics.castFOVRay(id, origin, endPos));
     }

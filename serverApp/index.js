@@ -150,6 +150,30 @@ io.on("connection", (socket) => {
         };
     });
 
+    socket.on("changeMap", async function(data) {
+        let id = data.playerID;
+        let changeTo = data.changeTo;
+        let xyKey = data.xyKey;
+        let playerFound = false;
+        let pos = misc.getXYPos(xyKey);
+        for (let p in playerData.players)
+        {
+            if (pos.x === playerData.players[p].chunkPos[0] && pos.y === playerData.players[p].chunkPos[1])
+            {
+                playerFound = true;
+            }
+        }
+        if (misc.isDefined(playerData.mapData[id][xyKey]) && !playerFound)
+        {
+            if (changeTo === "wall" || changeTo === "floor")
+            {
+                let userID = playerData.players[id].authUserID;
+                sql.qry(serverSQLPool, "UPDATE `map` SET `tile` = ?, `changedBy` = ? WHERE `xyKey` = ?", [changeTo, userID, xyKey], function () {});
+                playerData.mapData[id][xyKey].tile = changeTo;
+            }
+        }
+    });
+
     socket.on('updatePos', async function(msg) {
         let func = msg.func;
         let id = msg.id;
@@ -256,6 +280,17 @@ io.on("connection", (socket) => {
         }
     });
 
+    socket.on("ping", function (data) {
+        let timestamp = Date.now() / 1000;
+        let timeDiff = (timestamp - data.timestamp) * 1000;
+        io.emit("ping", {
+            serverTimestamp: timestamp,
+            clientTimestamp: data.timestamp,
+            timeDiff: timeDiff,
+            log: data.log,
+        });
+    });
+
 });
 
 async function loopWorld()
@@ -287,6 +322,7 @@ async function loopWorld()
                 let maxChunkLoadY = Math.ceil(((playerData.clientData.winCenterY[id] * 1) - (gridSize / 2)) / gridSize) + 2;
                 let playerChunkPos = {x: playerData.players[id].chunkPos[0], y: playerData.players[id].chunkPos[1]};
                 playerData.mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
+                let startPos = false;
                 for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
                 {
                     for (let sx = -maxChunkLoadX; sx <= maxChunkLoadX; sx++)
@@ -295,34 +331,49 @@ async function loopWorld()
                         let y = playerChunkPos.y + sy;
                         let pos = {x: x, y: y};
                         let index = misc.getXYKey(pos);
+                        if (index === "p0_p0")
+                            startPos = true;
                         if (misc.isDefined(playerData.mapData[id][index]))
                         {
                             playerData.mapData[id][index].chunkLoaded = true;
-                            let northWall = false;
-                            let northPos = {x: pos.x, y: pos.y + 1};
-                            let northXYKey = misc.getXYKey(northPos);
-                            let southWall = false;
-                            let southPos = {x: pos.x, y: pos.y - 1};
-                            let southXYKey = misc.getXYKey(southPos);
-                            let eastWall = false;
-                            let eastPos = {x: pos.x + 1, y: pos.y};
-                            let eastXYKey = misc.getXYKey(eastPos);
-                            let westWall = false;
-                            let westPos = {x: pos.x - 1, y: pos.y};
-                            let westXYKey = misc.getXYKey(westPos);
-                            if (misc.isDefined(playerData.mapData[id][northXYKey]) && playerData.mapData[id][northXYKey].tile === "wall")
-                                northWall = true;
-                            if (misc.isDefined(playerData.mapData[id][southXYKey]) && playerData.mapData[id][southXYKey].tile === "wall")
-                                southWall = true;
-                            if (misc.isDefined(playerData.mapData[id][eastXYKey]) && playerData.mapData[id][eastXYKey].tile === "wall")
-                                eastWall = true;
-                            if (misc.isDefined(playerData.mapData[id][westXYKey]) && playerData.mapData[id][westXYKey].tile === "wall")
-                                westWall = true;
 
-                            if (playerData.mapData[id][index].tile === "floor" && northWall && southWall && eastWall && westWall)
+                            let playerFound = false;
+                            for (let p in playerData.players)
                             {
-                                playerData.mapData[id][index].tile = "wall";
-                                sql.qry(serverSQLPool, "UPDATE `map` SET `tile` = 'wall' WHERE `xyKey` = ?", [index], function () {});
+                                if (pos.x === playerData.players[p].chunkPos[0] && pos.y === playerData.players[p].chunkPos[1])
+                                {
+                                    playerFound = true;
+                                }
+                            }
+
+                            if (!playerFound && !startPos)
+                            {
+                                let northWall = false;
+                                let northPos = {x: pos.x, y: pos.y + 1};
+                                let northXYKey = misc.getXYKey(northPos);
+                                let southWall = false;
+                                let southPos = {x: pos.x, y: pos.y - 1};
+                                let southXYKey = misc.getXYKey(southPos);
+                                let eastWall = false;
+                                let eastPos = {x: pos.x + 1, y: pos.y};
+                                let eastXYKey = misc.getXYKey(eastPos);
+                                let westWall = false;
+                                let westPos = {x: pos.x - 1, y: pos.y};
+                                let westXYKey = misc.getXYKey(westPos);
+                                if (misc.isDefined(playerData.mapData[id][northXYKey]) && playerData.mapData[id][northXYKey].tile === "wall")
+                                    northWall = true;
+                                if (misc.isDefined(playerData.mapData[id][southXYKey]) && playerData.mapData[id][southXYKey].tile === "wall")
+                                    southWall = true;
+                                if (misc.isDefined(playerData.mapData[id][eastXYKey]) && playerData.mapData[id][eastXYKey].tile === "wall")
+                                    eastWall = true;
+                                if (misc.isDefined(playerData.mapData[id][westXYKey]) && playerData.mapData[id][westXYKey].tile === "wall")
+                                    westWall = true;
+
+                                if (playerData.mapData[id][index].tile === "floor" && northWall && southWall && eastWall && westWall)
+                                {
+                                    playerData.mapData[id][index].tile = "wall";
+                                    sql.qry(serverSQLPool, "UPDATE `map` SET `tile` = 'wall' WHERE `xyKey` = ?", [index], function () {});
+                                }
                             }
 
                             if (playerData.mapData[id][index].tile === "wall")
@@ -344,7 +395,7 @@ async function loopWorld()
                         } else {
                             let radius = {x: 0, y: 0};
                             let pos = {x: x, y: y};
-                            let gen = await map.generateMap(pos, playerData.mapData[id], radius, gridSize);
+                            let gen = await map.generateMap(id, pos, playerData, radius, gridSize);
                             mapGenData = gen.mapData;
                         }
                     }
