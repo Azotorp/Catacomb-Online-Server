@@ -98,6 +98,10 @@ function qry2(pool, query_str, query_var, data)
     });
 }
 
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    return misc.dump(input, table, label, remoteConn);
+}
 
 module.exports = {
     clientSQLConnect: clientSQLConnect,

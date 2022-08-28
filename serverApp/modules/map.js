@@ -3,10 +3,11 @@ const sql = require("./sql.js");
 const settings = require("./settings.js");
 const physics = require("./physics.js");
 const serverSQLPool = sql.serverSQLConnect();
+let SETTINGS = {};
 
 async function loadMapData(pos =  {x: 0, y: 0}, radius= {x: 0, y: 0})
 {
-    let SETTINGS = await settings.getSettings();
+    //let SETTINGS = await settings.getSettings();
     let playerScale = parseFloat(SETTINGS.playerScale);
     let gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
     let tilesData = {};
@@ -21,8 +22,8 @@ async function loadMapData(pos =  {x: 0, y: 0}, radius= {x: 0, y: 0})
             param.push(pos.y - radius.y);
             param.push(pos.y + radius.y);
         }
-        //misc.dump(pos);
-        //misc.dump(radius);
+        //dump(pos);
+        //dump(radius);
 
         sql.qry(serverSQLPool, sqlQry, param, function (data, error) {
             if (misc.objLength(data) > 0)
@@ -789,7 +790,7 @@ async function breakDeadEnds()
         if (changeDir(dir))
         {
             checked[xyKey] = tileAt;
-            misc.dump(xyKey + " " + tileAt);
+            dump(xyKey + " " + tileAt);
         }
         if (misc.now() - startTime > 10)
             break;
@@ -958,10 +959,21 @@ function pickDir(thisMaze, pos, size, padding)
     }
 }
 
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    return misc.dump(input, table, label, remoteConn);
+}
+
+async function loadSettings()
+{
+    SETTINGS = await settings.getSettings();
+}
+
 module.exports = {
     loadMapData: loadMapData,
     generateMap: generateMap,
     calcShadow: calcShadow,
     breakDeadEnds: breakDeadEnds,
     generateMaze: generateMaze,
+    loadSettings: loadSettings,
 };

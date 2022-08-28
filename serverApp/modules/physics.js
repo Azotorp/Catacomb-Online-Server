@@ -1,5 +1,7 @@
 const p2 = require('p2');
 const misc = require("./misc.js");
+const settings = require("./settings.js");
+let SETTINGS = {};
 
 const FLAG = {
     WALL: 1,
@@ -25,7 +27,11 @@ let physics = {
         frictionGravity: 10,
         //islandSplit : true,
     }),
-    playerFOVRayCast: {},
+    rays: {
+        wallLOSRayCast: {},
+        laserRayCast: {},
+        lightRayCast: {},
+    },
 };
 
 
@@ -130,57 +136,77 @@ function clearAllWallBodies()
     }
 }
 
-function castFOVRay(id, origin, endPos)
+function rayCast(object, origin, endPos, collisionMask = null, reverse = true, skipBackTraces = true)
 {
-    physics.playerFOVRayCast[id] = {
+    object = {
         result: new p2.RaycastResult(),
         hitPoint: p2.vec2.create(),
         rayClosest: new p2.Ray({
             mode: p2.Ray.CLOSEST,
-            collisionMask: FLAG.WALL,
-            skipBackfaces: true,
+            collisionMask: collisionMask,
+            skipBackfaces: skipBackTraces,
         }),
     };
-
-    p2.vec2.copy(physics.playerFOVRayCast[id].rayClosest.from, [origin.x, origin.y]);
-    p2.vec2.copy(physics.playerFOVRayCast[id].rayClosest.to, [endPos.x, endPos.y]);
-    physics.playerFOVRayCast[id].rayClosest.update();
-    physics.world.raycast(physics.playerFOVRayCast[id].result, physics.playerFOVRayCast[id].rayClosest);
-    physics.playerFOVRayCast[id].result.getHitPoint(physics.playerFOVRayCast[id].hitPoint, physics.playerFOVRayCast[id].rayClosest);
-    //physics.playerFOVRayCast[id].result.reset();
-    if (physics.playerFOVRayCast[id].result.body !== null)
+    p2.vec2.copy(object.rayClosest.from, [origin.x, origin.y]);
+    p2.vec2.copy(object.rayClosest.to, [endPos.x, endPos.y]);
+    object.rayClosest.update();
+    physics.world.raycast(object.result, object.rayClosest);
+    object.result.getHitPoint(object.hitPoint, object.rayClosest);
+    //object.result.reset();
+    let dir = 1;
+    if (reverse)
+        dir = -1;
+    let body = {
+        object: false,
+        objectID: false,
+    };
+    if (object.result.body !== null)
     {
+        body = {
+            object: object.result.body.object,
+            objectID: object.result.body.objectID,
+        };
         return {
-            x: physics.playerFOVRayCast[id].hitPoint[0],
-            y: -physics.playerFOVRayCast[id].hitPoint[1],
+            x: object.hitPoint[0],
+            y: object.hitPoint[1] * dir,
+            body: body,
         };
     } else {
         return {
             x: endPos.x,
-            y: -endPos.y,
+            y: endPos.y * dir,
+            body: body,
         };
     }
 }
 
-function deleteRayCast(id)
+function deleteRayCast(object, id)
 {
-    delete physics.playerFOVRayCast[id];
+    delete object;
+}
+
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    return misc.dump(input, table, label, remoteConn);
+}
+
+async function loadSettings()
+{
+    SETTINGS = await settings.getSettings();
 }
 
 module.exports = {
+    wall: physics.wall,
+    player: physics.player,
     world: physics.world,
     FLAG: FLAG,
-    player: {
-        body: physics.player.body,
-    },
-    wall: {
-        body: physics.wall.body,
-    },
+    rays: physics.rays,
     newPlayerBody: newPlayerBody,
     newWallBody: newWallBody,
     deleteWallBody: deleteWallBody,
     deletePlayerBody: deletePlayerBody,
     clearAllWallBodies: clearAllWallBodies,
-    castFOVRay: castFOVRay,
+    rayCast: rayCast,
     deleteRayCast: deleteRayCast,
+    loadSettings: loadSettings,
 };

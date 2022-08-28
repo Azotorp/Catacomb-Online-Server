@@ -11,7 +11,7 @@ let SETTINGS = {};
 async function newPlayer(io, uuid, playerData, clientReadyData)
 {
     let access = await settings.getAccessLevels();
-    SETTINGS = await settings.getSettings();
+    //SETTINGS = await settings.getSettings();
     let clientData = playerData.clientData;
     let mapData = playerData.mapData;
     let players = playerData.players;
@@ -76,6 +76,21 @@ async function newPlayer(io, uuid, playerData, clientReadyData)
                     isTipToe: false,
                     stopPlayerTurn: false,
                     mouse: clientData.mouse[newPlayerID],
+                    muzzleOrigin: false,
+                    laserTarget: {
+                        aim: 0,
+                        position: {
+                            x: false,
+                            y: false,
+                        },
+                        distance: false,
+                        body: {
+                            object: false,
+                            objectID: false,
+                        },
+                    },
+                    wallLOSRayCastPath: false,
+                    lightRayCastPath: false,
                 };
                 let pos = {x: 0, y: 0};
                 physics.newPlayerBody(newPlayerID, pos, clientReadyData.player.width, clientReadyData.player.height);
@@ -100,7 +115,7 @@ async function newPlayer(io, uuid, playerData, clientReadyData)
                     mapData[newPlayerID][id].shadow = shadowData.shadow;
                     mapData[newPlayerID][id].shadowRotation = shadowData.rotation;
                 }
-                misc.dump("New Player: "+newPlayerID);
+                dump("New Player: "+newPlayerID);
 
                 engine.updatePlayerPos(players, newPlayerID, physicsLoopFrequency, gridSize, mapData[newPlayerID]);
 
@@ -139,7 +154,9 @@ function deletePlayer(io, playerData, playerID)
     delete playerData.clientData.fps[playerID];
     delete playerData.clientData.zoom[playerID];
     physics.deletePlayerBody(playerID);
-    physics.deleteRayCast(playerID);
+    physics.deleteRayCast(physics.rays.wallLOSRayCast[playerID]);
+    physics.deleteRayCast(physics.rays.laserRayCast[playerID]);
+    physics.deleteRayCast(physics.rays.lightRayCast[playerID]);
     io.emit("userDisconnect", {
         players: playerData.players,
         playerID: playerID,
@@ -154,7 +171,18 @@ function deletePlayer(io, playerData, playerID)
     });
 }
 
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    return misc.dump(input, table, label, remoteConn);
+}
+
+async function loadSettings()
+{
+    SETTINGS = await settings.getSettings();
+}
+
 module.exports = {
     newPlayer: newPlayer,
     deletePlayer: deletePlayer,
+    loadSettings: loadSettings,
 };

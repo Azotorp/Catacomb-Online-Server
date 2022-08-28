@@ -19,7 +19,6 @@ const httpServer = createServer({
     cert: readFileSync(generalConfig.sslCertPath + "/" + generalConfig.sslCertFile), // use let's encrypt to get SSL
     passphrase: generalConfig.sslPrivateKeyPassPhrase,
 });
-
 const io = new Server(httpServer, {
     cors: {
         origin: "https://" + generalConfig.clientHostDomainName,
@@ -46,18 +45,8 @@ let zombies = {};
 let newZombieID = 0;
 
 let serverRunning = false;
-let playerUpdatePollingDelay = 0;
-let mapUpdatePollingDelay = 0;
-let inputUpdatePollingDelay = 0;
-let playerScale = 1;
-let worldScaleConstant = 0.00761461306;
-let realWorldScale = worldScaleConstant / playerScale; // meters per pixel
-let physicsLoopFrequency = 66;
-let physicsLoopFrameTickTime = 1000 / physicsLoopFrequency;
 let frames = 0;
 let SETTINGS = {};
-let gridSize;
-let mapSize = {};
 let lastFrameTime = misc.now();
 let walls = [];
 
@@ -89,24 +78,16 @@ httpServer.listen(socketIOPort, socketIOHost, async function() {
     dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
     serverRunning = true;
     sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
-
     SETTINGS = await settings.getSettings();
-    physicsLoopFrequency = parseInt(SETTINGS.physicsLoopFrequency);
-    physicsLoopFrameTickTime = 1000 / physicsLoopFrequency;
-    playerScale = parseFloat(SETTINGS.playerScale);
-    gridSize = parseInt(parseInt(SETTINGS.gridSize) * playerScale);
-    worldScaleConstant = parseFloat(SETTINGS.worldScaleConstant);
-    realWorldScale = worldScaleConstant / playerScale; // meters per pixel
-    mapSize = {
-        x: parseInt(SETTINGS.mapWidth),
-        y: parseInt(SETTINGS.mapHeight),
-    };
-    playerUpdatePollingDelay = SETTINGS.playerUpdatePollingDelay;
-    mapUpdatePollingDelay = SETTINGS.mapUpdatePollingDelay;
-    inputUpdatePollingDelay = SETTINGS.inputUpdatePollingDelay;
+    await engine.loadSettings();
+    await map.loadSettings();
+    await physics.loadSettings();
+    await player.loadSettings();
+    setImmediate(gameLoop);
+
     //map.breakDeadEnds();
     /*
-    let genMapData = await map.generateMap(mapSize.x, mapSize.y);
+    let genMapData = await map.generateMap(SETTINGS.mapSize.x, SETTINGS.mapSize.y);
     let ins = "INSERT INTO `map` (`id`, `chunkPosX`, `chunkPosY`, `tile`) VALUES ";
     let qry = [];
     for (let k in genMapData)
@@ -179,7 +160,7 @@ io.on("connection", (socket) => {
         let id = msg.id;
         if (misc.isDefined(playerData.players[id]))
         {
-            let inputUpdatePollingFrames = parseInt((inputUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
+            let inputUpdatePollingFrames = parseInt((SETTINGS.inputUpdatePollingDelay / SETTINGS.physicsLoopFrameTickTime).toFixed(0));
             if (inputUpdatePollingFrames === 0)
                 inputUpdatePollingFrames = 1;
             if (frames % inputUpdatePollingFrames === 0)
@@ -298,29 +279,63 @@ async function loopWorld()
     if (misc.isDefined(playerData.players))
     {
         let newMapData = [];
+        let muzzleOffset = {
+            length: SETTINGS.muzzlePosOffset.x * SETTINGS.playerScale,
+            width: SETTINGS.muzzlePosOffset.y * SETTINGS.playerScale,
+        };
+        let aim = {};
         for (let id in playerData.players)
         {
-            //misc.dump(playerData.players[id]);
+            let players = playerData.players;
             let mapGenData = false;
             let mapDataSent;
-            if (misc.isDefined(playerData.players[id]))
+            if (misc.isDefined(players[id]))
             {
                 //dump(mouse);
-                playerData.players[id].mouse = playerData.clientData.mouse[id];
+                aim[id] = physics.player.body[id].angle;
+                players[id].mouse = playerData.clientData.mouse[id];
                 let pos = {x: physics.player.body[id].position[0], y: physics.player.body[id].position[1]};
                 let mouseAngle = misc.angle(pos, playerData.clientData.mouse[id]);
-                let angleDist = misc.angleDist(mouseAngle, physics.player.body[id].angle);
-                let turnDir = misc.angleMoveDir(mouseAngle, physics.player.body[id].angle);
-                if (misc.toDeg(angleDist) > playerData.players[id].turnSpeed / physicsLoopFrequency)
+                let angleDist = misc.angleDist(mouseAngle, aim[id]);
+                let turnDir = misc.angleMoveDir(mouseAngle, aim[id]);
+                if (misc.toDeg(angleDist) > players[id].turnSpeed / SETTINGS.physicsLoopFrequency)
                 {
-                    physics.player.body[id].angularVelocity = misc.toRad(playerData.players[id].turnSpeed) * turnDir;
+                    physics.player.body[id].angularVelocity = misc.toRad(players[id].turnSpeed) * turnDir;
                 } else {
                     physics.player.body[id].angularVelocity = 0;
                     physics.player.body[id].angle = mouseAngle;
                 }
-                let maxChunkLoadX = Math.ceil(((playerData.clientData.winCenterX[id] * 1) - (gridSize / 2)) / gridSize) + 2;
-                let maxChunkLoadY = Math.ceil(((playerData.clientData.winCenterY[id] * 1) - (gridSize / 2)) / gridSize) + 2;
-                let playerChunkPos = {x: playerData.players[id].chunkPos[0], y: playerData.players[id].chunkPos[1]};
+
+                players[id].muzzleOrigin = {
+                    x: players[id].body.position[0] + (Math.cos(aim[id]) * muzzleOffset.length - Math.cos(aim[id] + misc.toRad(90)) * muzzleOffset.width),
+                    y: players[id].body.position[1] + (Math.sin(aim[id]) * muzzleOffset.length - Math.sin(aim[id] + misc.toRad(90)) * muzzleOffset.width)
+                };
+
+                let crossHairMousePos = {
+                    x: players[id].mouse.x - Math.cos(aim[id] + misc.toRad(90)) * muzzleOffset.width,
+                    y: players[id].mouse.y - Math.sin(aim[id] + misc.toRad(90)) * muzzleOffset.width,
+                };
+                let laserDistance = misc.distance(players[id].muzzleOrigin, crossHairMousePos);
+                let laserRayCastEndPos = {
+                    x: players[id].muzzleOrigin.x + Math.cos(aim[id]) * laserDistance,
+                    y: players[id].muzzleOrigin.y + Math.sin(aim[id]) * laserDistance,
+                };
+                //dump(players[id].muzzleOrigin);
+                laserDistance = misc.distance(players[id].muzzleOrigin, laserRayCastEndPos);
+                physics.rays.laserRayCast[id] = physics.rayCast(physics.rays.laserRayCast[id], players[id].muzzleOrigin, laserRayCastEndPos, physics.FLAG.WALL | physics.FLAG.PLAYER, false);
+                laserDistance = misc.distance(players[id].muzzleOrigin, physics.rays.laserRayCast[id]);
+                players[id].laserTarget = {
+                    aim: aim[id],
+                    distance: laserDistance,
+                    position: {
+                        x: physics.rays.laserRayCast[id].x,
+                        y: physics.rays.laserRayCast[id].y,
+                    },
+                    body: physics.rays.laserRayCast[id].body,
+                };
+                let maxChunkLoadX = Math.ceil(((playerData.clientData.winCenterX[id] * 1) - (SETTINGS.gridSize / 2)) / SETTINGS.gridSize) + 2;
+                let maxChunkLoadY = Math.ceil(((playerData.clientData.winCenterY[id] * 1) - (SETTINGS.gridSize / 2)) / SETTINGS.gridSize) + 2;
+                let playerChunkPos = {x: players[id].chunkPos[0], y: players[id].chunkPos[1]};
                 playerData.mapData[id] = await map.loadMapData(playerChunkPos, {x: maxChunkLoadX, y: maxChunkLoadY});
                 let startPos = false;
                 for (let sy = -maxChunkLoadY; sy <= maxChunkLoadY; sy++)
@@ -338,9 +353,9 @@ async function loopWorld()
                             playerData.mapData[id][index].chunkLoaded = true;
 
                             let playerFound = false;
-                            for (let p in playerData.players)
+                            for (let p in players)
                             {
-                                if (pos.x === playerData.players[p].chunkPos[0] && pos.y === playerData.players[p].chunkPos[1])
+                                if (pos.x === players[p].chunkPos[0] && pos.y === players[p].chunkPos[1])
                                 {
                                     playerFound = true;
                                 }
@@ -378,9 +393,9 @@ async function loopWorld()
 
                             if (playerData.mapData[id][index].tile === "wall")
                             {
-                                let wallBody = misc.calcGlobalPos({x: playerData.mapData[id][index].chunkPosX, y: playerData.mapData[id][index].chunkPosY}, gridSize);
+                                let wallBody = misc.calcGlobalPos({x: playerData.mapData[id][index].chunkPosX, y: playerData.mapData[id][index].chunkPosY}, SETTINGS.gridSize);
                                 playerData.mapData[id][index].bodyID = index;
-                                physics.newWallBody(index, wallBody, gridSize, gridSize);
+                                physics.newWallBody(index, wallBody, SETTINGS.gridSize, SETTINGS.gridSize);
                                 if (index === "p0_p0")
                                 {
                                     //dump("wall");
@@ -395,7 +410,7 @@ async function loopWorld()
                         } else {
                             let radius = {x: 0, y: 0};
                             let pos = {x: x, y: y};
-                            let gen = await map.generateMap(id, pos, playerData, radius, gridSize);
+                            let gen = await map.generateMap(id, pos, playerData, radius, SETTINGS.gridSize);
                             mapGenData = gen.mapData;
                         }
                     }
@@ -417,16 +432,16 @@ async function loopWorld()
                     mapDataSent[i].shadowRotation = shadowData.rotation;
                 }
                 newMapData[id] = mapDataSent;
-                let playerUpdatePollingFrames = parseInt((playerUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
+                let playerUpdatePollingFrames = parseInt((SETTINGS.playerUpdatePollingDelay / SETTINGS.physicsLoopFrameTickTime).toFixed(0));
                 if (playerUpdatePollingFrames === 0)
                     playerUpdatePollingFrames = 1;
-                let mapUpdatePollingFrames = parseInt((mapUpdatePollingDelay / physicsLoopFrameTickTime).toFixed(0));
+                let mapUpdatePollingFrames = parseInt((SETTINGS.mapUpdatePollingDelay / SETTINGS.physicsLoopFrameTickTime).toFixed(0));
                 if (mapUpdatePollingFrames === 0)
                     mapUpdatePollingFrames = 1;
                 if (frames % playerUpdatePollingFrames === 0)
                 {
                     io.emit("clientPlayerUpdate", {
-                        players: playerData.players,
+                        players: players,
                     });
                 }
                 if (frames % mapUpdatePollingFrames === 0)
@@ -441,24 +456,22 @@ async function loopWorld()
     lastFrameTime = misc.now();
 }
 
-setImmediate(gameLoop);
 
 function gameLoop() {
     //dump(misc.rng(0,100));
     if (misc.isDefined(playerData.players) && misc.objLength(playerData.players, true) > 0)
     {
-        engine.updatePlayersPos(playerData.players, physicsLoopFrequency, gridSize, playerData.mapData);
+        engine.updatePlayersPos(playerData.players, SETTINGS.physicsLoopFrequency, SETTINGS.gridSize, playerData.mapData);
         loopWorld();
     }
-    physics.world.step(1 / physicsLoopFrequency, physicsLoopFrameTickTime / 1000, 2);
+    physics.world.step(1 / SETTINGS.physicsLoopFrequency, SETTINGS.physicsLoopFrameTickTime / 1000, 2);
     frames++;
     setTimeout(function () {
         setImmediate(gameLoop);
-    }, physicsLoopFrameTickTime);
+    }, SETTINGS.physicsLoopFrameTickTime);
 }
 
-function dump(input)
+function dump(input, table = false, label = false, remoteConn = false)
 {
-    console.log(input);
-    //io.emit("serverDump", stringy.stringify(input));
+    return misc.dump(input, table, label, remoteConn);
 }

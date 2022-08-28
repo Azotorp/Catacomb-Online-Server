@@ -1,5 +1,7 @@
 const misc = require("./misc.js");
 const physics = require("./physics.js");
+const settings = require("./settings.js");
+let SETTINGS = {};
 
 function updatePlayerPos(players, id, FPS, gridSize, mapData)
 {
@@ -192,11 +194,81 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
     });
     if (players[id].body.movementHistory.length > 10)
         players[id].body.movementHistory.shift();
+}
+
+function updatePlayersPos(players, FPS, gridSize, mapData)
+{
+    if (misc.isDefined(players))
+    {
+        for (let id in players)
+        {
+            updatePlayerPos(players, id, FPS, gridSize, mapData);
+            wallLOSRayCast(players, mapData, id, gridSize);
+            lightRayCast(60, players, mapData, id, gridSize);
+        }
+    }
+}
+
+function lightRayCast(fov, players, mapData, id, gridSize)
+{
+    let aim = players[id].body.angle + physics.player.body[id].angularVelocity / SETTINGS.physicsLoopFrequency;
     let origin = {
         x: players[id].body.position[0],
         y: players[id].body.position[1],
     };
-    let fovScanPos = [];
+
+    let muzzleOffset = {
+        length: SETTINGS.muzzlePosOffset.x * SETTINGS.playerScale - 20,
+        width: SETTINGS.muzzlePosOffset.y * SETTINGS.playerScale,
+    };
+
+    let flashLightPos = {
+        x: players[id].body.position[0] + Math.cos(aim) * muzzleOffset.length - Math.cos(aim + misc.toRad(90)) * muzzleOffset.width,
+        y: players[id].body.position[1] + Math.sin(aim) * muzzleOffset.length - Math.sin(aim + misc.toRad(90)) * muzzleOffset.width,
+    };
+    let halfFov = fov / 2;
+    let lightRayCastPath = [];
+    let angle = [];
+    let rays = 60;
+    let angleStep = fov / rays;
+    for (let f = 0; f < fov; f += angleStep)
+    {
+        let angle3 = aim + misc.toRad(f) - (misc.toRad(fov) / 2);
+        angle.push(angle3);
+    }
+    let angle3 = aim + misc.toRad(fov) - (misc.toRad(fov) / 2);
+    angle.push(angle3);
+    angle.sort((a, b) => {
+        return a - b;
+    });
+    let range = 850;
+    for (let a in angle)
+    {
+        let ad = misc.toDeg(misc.angleDist(angle[a], aim));
+        let rangeMod = 1;
+        if (ad > fov * 0.95)
+            rangeMod = 0.1;
+        let endPos = {
+            x: flashLightPos.x + Math.cos(angle[a]) * range * rangeMod,
+            y: flashLightPos.y + Math.sin(angle[a]) * range * rangeMod,
+        };
+        lightRayCastPath.push(physics.rayCast(physics.rays.lightRayCast[id], flashLightPos, endPos, physics.FLAG.WALL));
+    }
+    players[id].lightRayCastPath = lightRayCastPath;
+    players[id].lightRayCastPath.push({
+        x: flashLightPos.x,
+        y: -flashLightPos.y,
+    });
+}
+
+function wallLOSRayCast(players, mapData, id, gridSize)
+{
+    let origin = {
+        x: players[id].body.position[0],
+        y: players[id].body.position[1],
+    };
+
+    let wallLOSRayCastPath = [];
     let angle = [];
     for (let m in mapData[id])
     {
@@ -228,13 +300,14 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
                 angle.push(angle1);
                 angle.push(angle2);
             }
-            let rays = 30;
-            for (let n = 0; n < rays; n++)
-            {
-                let angle3 = misc.toRad(360) / rays * n ;
-                angle.push(angle3);
-            }
         }
+    }
+
+    let rays = 24;
+    for (let n = 0; n < rays; n++)
+    {
+        let angle3 = misc.toRad(360) / rays * n ;
+        angle.push(angle3);
     }
 
     angle.sort((a, b) => {
@@ -247,24 +320,24 @@ function updatePlayerPos(players, id, FPS, gridSize, mapData)
             x: origin.x + Math.cos(angle[a]) * 9999,
             y: origin.y + Math.sin(angle[a]) * 9999,
         };
-        fovScanPos.push(physics.castFOVRay(id, origin, endPos));
+        wallLOSRayCastPath.push(physics.rayCast(physics.rays.wallLOSRayCast[id], origin, endPos, physics.FLAG.WALL));
     }
-    players[id].fovScanPath = fovScanPos;
+    players[id].wallLOSRayCastPath = wallLOSRayCastPath;
+
 }
 
-function updatePlayersPos(players, FPS, gridSize, mapData)
+function dump(input, table = false, label = false, remoteConn = false)
 {
-    if (misc.isDefined(players))
-    {
-        for (let id in players)
-        {
-            updatePlayerPos(players, id, FPS, gridSize, mapData);
-        }
-    }
+    return misc.dump(input, table, label, remoteConn);
 }
 
+async function loadSettings()
+{
+    SETTINGS = await settings.getSettings();
+}
 
 module.exports = {
     updatePlayerPos: updatePlayerPos,
     updatePlayersPos: updatePlayersPos,
+    loadSettings: loadSettings,
 };

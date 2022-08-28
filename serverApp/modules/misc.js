@@ -1,10 +1,26 @@
 const crypto = require('crypto');
 const { performance } = require('perf_hooks');
-function dump(input)
-{
-    console.log(input);
-}
+const stringy = require("./circular.js");
 
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    if (table)
+    {
+        if (label)
+        {
+            console.log("\t\t\t####- [ "+ label + " ] -####");
+        }
+        console.table(input);
+    } else {
+        if (label)
+        {
+            console.log("\t\t\t####- [ "+ label + " ] -####");
+        }
+        console.log(input);
+    }
+    if (remoteConn)
+        remoteConn.emit("serverDump", stringy.stringify(input));
+}
 let rng = function(min = 0, max = 1, precision = 0)
 {
     let v = [];
@@ -105,6 +121,11 @@ function objLength(obj)
 function shuffleArray(array)
 {
     return array.map(value => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
+}
+
+function normal(num, min, max)
+{
+    return (num - min) / (max - min);
 }
 
 let now = function(last = 0)
@@ -299,6 +320,7 @@ module.exports = {
     filterObj2: filterObj2,
     objLength: objLength,
     shuffleArray: shuffleArray,
+    normal: normal,
     now: now,
     isDefined: isDefined,
     sha256: sha256,

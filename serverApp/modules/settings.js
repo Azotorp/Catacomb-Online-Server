@@ -17,8 +17,23 @@ async function getSettings()
                 {
                     SETTINGS[data[k].setting] = data[k].value;
                 }
+                SETTINGS.physicsLoopFrequency = parseInt(SETTINGS.physicsLoopFrequency);
+                SETTINGS.physicsLoopFrameTickTime = 1000 / SETTINGS.physicsLoopFrequency;
+                SETTINGS.playerScale = parseFloat(SETTINGS.playerScale);
+                SETTINGS.gridSize = parseInt(SETTINGS.gridSize) * SETTINGS.playerScale;
+                SETTINGS.worldScaleConstant = parseFloat(SETTINGS.worldScaleConstant);
+                SETTINGS.realWorldScale = SETTINGS.worldScaleConstant / SETTINGS.playerScale; // meters per pixel
+                SETTINGS.mapSize = {
+                    x: parseInt(SETTINGS.mapWidth),
+                    y: parseInt(SETTINGS.mapHeight),
+                };
+                let muzzlePosOffset = SETTINGS.muzzlePosOffset.split(";");
+                SETTINGS.muzzlePosOffset = {
+                    x: parseInt(muzzlePosOffset[0]),
+                    y: parseInt(muzzlePosOffset[1]),
+                };
+                resolve(SETTINGS);
             }
-            resolve(SETTINGS);
         });
     });
 }
@@ -42,6 +57,11 @@ async function getAccessLevels()
             resolve(access);
         });
     });
+}
+
+function dump(input, table = false, label = false, remoteConn = false)
+{
+    return misc.dump(input, table, label, remoteConn);
 }
 
 module.exports = {

@@ -1,0 +1,1 @@
+INSERT INTO `settings` (`setting`, `value`) VALUES ('muzzleOffset', '96;16');
