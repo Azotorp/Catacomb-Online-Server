@@ -1,6 +1,9 @@
 const mysql = require('mysql');
 const mysqlConfig = require("../config/mysql_config.json");
 const misc = require("./misc.js");
+const fs = require("fs");
+const { readFileSync } = require("fs");
+const path = require('path');
 
 let serverSQLConnect = function() {
     const pool = mysql.createPool({
@@ -23,11 +26,6 @@ let clientSQLConnect = function() {
     });
     return pool;
 };
-
-function dump(input)
-{
-    console.log(input);
-}
 
 function qry(pool, query_str, query_var, data)
 {
@@ -98,6 +96,84 @@ function qry2(pool, query_str, query_var, data)
     });
 }
 
+async function dbVersion()
+{
+    return new Promise((resolve, reject) => {
+        qry2(serverSQLConnect(), "select `database_version` from `db_version`", [], function (data) {
+            resolve(data);
+        });
+    });
+}
+
+async function updateSQLVersion()
+{
+    return new Promise(async function(resolve, reject) {
+        let dbVer = await dbVersion();
+        const sqlUpdatesDirectoryPath = path.join(__dirname, '../../sql/updates');
+        fs.readdir(sqlUpdatesDirectoryPath, async function (err, files) {
+            if (err) {
+                return console.log('Unable to scan directory: ' + err);
+            }
+            let latestVersionFile = 0;
+            files.forEach(function (file) {
+                let sqlNum = parseInt(file.split(".")[0]);
+                if (sqlNum > latestVersionFile)
+                    latestVersionFile = sqlNum;
+            });
+            if (latestVersionFile > dbVer)
+            {
+                for (let v = dbVer + 1; v <= latestVersionFile; v++)
+                {
+                    let query = misc.eol(readFileSync(sqlUpdatesDirectoryPath + "/" + v + ".sql", 'utf8').toString());
+                    query = query.split(/;\n/);
+                    for (let q in query)
+                    {
+                        if (query[q].length > 0 && query[q])
+                            await doInstallQry(query[q]);
+                    }
+                    dump("SQL Queried: "+v+".sql");
+                }
+                qry(serverSQLConnect(), "UPDATE `db_version` SET `database_version` = ?", [latestVersionFile], function () {});
+                resolve(latestVersionFile);
+            } else {
+                resolve(dbVer);
+            }
+        });
+    });
+}
+
+async function doInstallQry(query)
+{
+    return new Promise(async function(resolve) {
+        if (query.length === 0 || !query)
+            resolve(false);
+        qry(serverSQLConnect(), query, [], function (data, error) {
+            resolve(true);
+        });
+    });
+}
+
+async function dbInstall()
+{
+    return new Promise(async function(resolve, reject) {
+
+        const sqlInstallDirectoryPath = path.join(__dirname, '../../sql');
+        let query = misc.eol(readFileSync(sqlInstallDirectoryPath + "/database.sql", 'utf8').toString());
+        query = query.split(/;\n/);
+        for (let q in query)
+        {
+            await doInstallQry(query[q]);
+        }
+        dump("SQL Queried: database.sql\n");
+        dump("{FgYellow}########### {FgMagenta}! {FgRed}WARNING {FgMagenta}! {FgYellow}###########");
+        dump("{FgCyan}Set the following constant to {FgYellow}FALSE {FgCyan}in the {FgWhite}index.js {FgCyan}file near line {FgGreen}22");
+        dump("{FgMagenta}const {FgWhite}INSTALL_NEW_DATABASE = {FgYellow}false{FgWhite};");
+        dump("{FgYellow}########### {FgMagenta}! {FgRed}WARNING {FgMagenta}! {FgYellow}###########\n");
+        process.exit();
+        resolve(true);
+    });
+}
+
 function dump(input, table = false, label = false, remoteConn = false)
 {
     return misc.dump(input, table, label, remoteConn);
@@ -108,4 +184,7 @@ module.exports = {
     serverSQLConnect: serverSQLConnect,
     qry: qry,
     qry2: qry2,
+    dbVersion: dbVersion,
+    updateSQLVersion: updateSQLVersion,
+    dbInstall: dbInstall,
 };

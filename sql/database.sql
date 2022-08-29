@@ -1,12 +1,4 @@
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET NAMES utf8 */;
-/*!50503 SET NAMES utf8mb4 */;
-/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-/*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
-
+DROP TABLE IF EXISTS `user_auth`;
 DROP TABLE IF EXISTS `access_levels`;
 CREATE TABLE IF NOT EXISTS `access_levels` (
     `id` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
@@ -24,54 +16,6 @@ INSERT INTO `access_levels` (`id`, `rank`, `level`, `max_instances`) VALUES
 (4, 'Admin', 3, -1),
 (5, 'Super Admin', 4, -1);
 
-DROP TABLE IF EXISTS `cloud_save`;
-CREATE TABLE IF NOT EXISTS `cloud_save` (
-    `user_id` bigint(20) unsigned NOT NULL,
-    `jsonData` mediumtext DEFAULT NULL,
-    `jsonDataKey` varchar(50) DEFAULT NULL,
-    PRIMARY KEY (`user_id`) USING BTREE
-    ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-
-
-DROP TABLE IF EXISTS `map`;
-CREATE TABLE IF NOT EXISTS `map` (
-    `xyKey` varchar(25) NOT NULL,
-    `chunkPosX` int(11) NOT NULL,
-    `chunkPosY` int(11) NOT NULL,
-    `tile` enum('wall','floor') CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL DEFAULT 'wall',
-    `seededBy` bigint(20) unsigned NOT NULL DEFAULT 0,
-    `created` timestamp NOT NULL DEFAULT current_timestamp(),
-    PRIMARY KEY (`xyKey`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-
-DROP TABLE IF EXISTS `settings`;
-CREATE TABLE IF NOT EXISTS `settings` (
-    `setting` varchar(50) DEFAULT NULL,
-    `value` mediumtext DEFAULT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-
-INSERT INTO `settings` (`setting`, `value`) VALUES
-('gridSize', '512'),
-('playerScale', '0.75'),
-('mapWidth', '99'),
-('mapHeight', '99'),
-('playerUpdatePollingDelay', '0'),
-('mapUpdatePollingDelay', '0'),
-('inputUpdatePollingDelay', '0');
-
-DROP TABLE IF EXISTS `sql_error`;
-CREATE TABLE IF NOT EXISTS `sql_error` (
-    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-    `error` longtext COLLATE utf8_unicode_ci DEFAULT NULL,
-    `query` longtext COLLATE utf8_unicode_ci DEFAULT NULL,
-    `page` varchar(50) COLLATE utf8_unicode_ci DEFAULT '',
-    `line` int(10) unsigned DEFAULT NULL,
-    `time` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-    PRIMARY KEY (`id`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
-
-
-DROP TABLE IF EXISTS `user_auth`;
 CREATE TABLE IF NOT EXISTS `user_auth` (
     `user_id` bigint(20) unsigned NOT NULL DEFAULT 0,
     `username` varchar(30) COLLATE utf8_unicode_ci NOT NULL,
@@ -96,8 +40,71 @@ CREATE TABLE IF NOT EXISTS `user_auth` (
     CONSTRAINT `FK_user_auth_access_levels` FOREIGN KEY (`access_level`) REFERENCES `access_levels` (`rank`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
-/*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
-/*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;
-/*!40014 SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1) */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40111 SET SQL_NOTES=IFNULL(@OLD_SQL_NOTES, 1) */;
+DROP TABLE IF EXISTS `cloud_save`;
+CREATE TABLE IF NOT EXISTS `cloud_save` (
+    `user_id` bigint(20) unsigned NOT NULL,
+    `jsonData` mediumtext DEFAULT NULL,
+    `jsonDataKey` varchar(50) DEFAULT NULL,
+    PRIMARY KEY (`user_id`) USING BTREE
+    ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+DROP TABLE IF EXISTS `db_version`;
+CREATE TABLE IF NOT EXISTS `db_version` (
+    `database_version` int(10) unsigned NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `db_version` (`database_version`) VALUES
+(0);
+
+DROP TABLE IF EXISTS `map`;
+CREATE TABLE IF NOT EXISTS `map` (
+    `xyKey` varchar(25) CHARACTER SET latin1 NOT NULL,
+    `chunkPosX` int(11) NOT NULL,
+    `chunkPosY` int(11) NOT NULL,
+    `tile` enum('wall','floor') COLLATE utf8_unicode_ci NOT NULL DEFAULT 'wall',
+    `seededBy` bigint(20) unsigned NOT NULL DEFAULT 0,
+    `created` timestamp NOT NULL DEFAULT current_timestamp(),
+    `changedBy` bigint(20) unsigned NOT NULL DEFAULT 0,
+    `changed` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+    PRIMARY KEY (`xyKey`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci ROW_FORMAT=COMPRESSED;
+
+
+DROP TABLE IF EXISTS `settings`;
+CREATE TABLE IF NOT EXISTS `settings` (
+    `setting` varchar(50) DEFAULT NULL,
+    `value` mediumtext DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+INSERT INTO `settings` (`setting`, `value`) VALUES
+('gridSize', '512'),
+('playerScale', '0.75'),
+('mapWidth', '99'),
+('mapHeight', '99'),
+('playerUpdatePollingDelay', '0'),
+('mapUpdatePollingDelay', '0'),
+('inputUpdatePollingDelay', '0'),
+('worldScaleConstant', '0.00761461306'),
+('physicsLoopFrequency', '60'),
+('muzzlePosOffset', '96;16');
+
+DROP TABLE IF EXISTS `sql_error`;
+CREATE TABLE IF NOT EXISTS `sql_error` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `error` longtext COLLATE utf8_unicode_ci DEFAULT NULL,
+    `query` longtext COLLATE utf8_unicode_ci DEFAULT NULL,
+    `page` varchar(50) COLLATE utf8_unicode_ci DEFAULT '',
+    `line` int(10) unsigned DEFAULT NULL,
+    `time` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+    PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+DROP TABLE IF EXISTS `user_stats`;
+CREATE TABLE IF NOT EXISTS `user_stats` (
+    `user_id` bigint(20) unsigned NOT NULL,
+    `total_distance` decimal(20,3) unsigned DEFAULT 0.000,
+    `walls_broken` int(10) unsigned DEFAULT 0,
+    `walls_built` int(10) unsigned DEFAULT 0,
+    PRIMARY KEY (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;

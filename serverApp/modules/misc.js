@@ -4,19 +4,56 @@ const stringy = require("./circular.js");
 
 function dump(input, table = false, label = false, remoteConn = false)
 {
+    let colors = {
+        Reset: "\x1b[0m",
+        Bright: "\x1b[1m",
+        Dim: "\x1b[2m",
+        Underscore: "\x1b[4m",
+        Blink: "\x1b[5m",
+        Reverse: "\x1b[7m",
+        Hidden: "\x1b[8m",
+        FgBlack: "\x1b[30m",
+        FgRed: "\x1b[31m",
+        FgGreen: "\x1b[32m",
+        FgYellow: "\x1b[33m",
+        FgBlue: "\x1b[34m",
+        FgMagenta: "\x1b[35m",
+        FgCyan: "\x1b[36m",
+        FgWhite: "\x1b[37m",
+        BgBlack: "\x1b[40m",
+        BgRed: "\x1b[41m",
+        BgGreen: "\x1b[42m",
+        BgYellow: "\x1b[43m",
+        BgBlue: "\x1b[44m",
+        BgMagenta: "\x1b[45m",
+        BgCyan: "\x1b[46m",
+        BgWhite: "\x1b[47m",
+    };
+    let replaceCol = function(str) {
+        str += "{Reset}";
+        for (let c in colors)
+        {
+            let regx = "{" + c + "}";
+            let colStr = colors[c];
+            str = str.replaceAll(regx, colStr);
+        }
+        return str;
+    };
+    let labelStr = replaceCol("{fgGreen}####{FgYellow}- {FgWhite}[ {FgFgMagenta}"+ label + " {FgWhite}] {FgYellow}-{fgGreen}####");
+    let inputStr = replaceCol(input);
     if (table)
     {
         if (label)
         {
-            console.log("\t\t\t####- [ "+ label + " ] -####");
+            console.log(labelStr);
         }
         console.table(input);
     } else {
         if (label)
         {
-            console.log("\t\t\t####- [ "+ label + " ] -####");
+            console.log(labelStr);
         }
-        console.log(input);
+        console.log(inputStr);
     }
     if (remoteConn)
         remoteConn.emit("serverDump", stringy.stringify(input));
@@ -307,6 +344,11 @@ function genNewID(length, options = {upper: true, lower: true, numbers: true, sy
     return result;
 }
 
+function eol(str)
+{
+    return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 module.exports = {
     dump: dump,
     rng: rng,
@@ -335,4 +377,5 @@ module.exports = {
     getXYKey: getXYKey,
     getXYPos: getXYPos,
     genNewID: genNewID,
+    eol: eol,
 };

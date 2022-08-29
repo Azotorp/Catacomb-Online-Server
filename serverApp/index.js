@@ -14,11 +14,22 @@ const zombie = require("./modules/zombie.js");
 const stringy = require("./modules/circular.js");
 const settings = require("./modules/settings.js");
 const serverSQLPool = sql.serverSQLConnect();
+
+// IMPORTANT!!!
+// IF YOU NEED TO SETUP THE DATABASE FOR THE FIRST TIME CHANGE THE CONSTANT BELOW TO TRUE!
+// THEN AFTER YOU RUN THE APP SHUTDOWN THE APP THEN CHANGE BACK TO FALSE.
+// THE SERVER WILL AUTO UPDATE THE NEW UPDATES IN THE ./SQL/UPDATES FOLDER.
+const INSTALL_NEW_DATABASE = false;
+
+// for auto updates mentioned above, should be safe to turn on as it will only run if the database version is older than the latest sql file
+const RUN_SQL_UPDATES = true;
+
 const httpServer = createServer({
     key: readFileSync(generalConfig.sslPrivateKeyPath + "/" + generalConfig.sslPrivateKeyFile), // use let's encrypt to get SSL
     cert: readFileSync(generalConfig.sslCertPath + "/" + generalConfig.sslCertFile), // use let's encrypt to get SSL
     passphrase: generalConfig.sslPrivateKeyPassPhrase,
 });
+
 const io = new Server(httpServer, {
     cors: {
         origin: "https://" + generalConfig.clientHostDomainName,
@@ -75,6 +86,14 @@ physics.world.on("impact",function(evt) {
 });
 
 httpServer.listen(socketIOPort, socketIOHost, async function() {
+    if (INSTALL_NEW_DATABASE)
+    {
+        await sql.dbInstall();
+    }
+    if (RUN_SQL_UPDATES)
+    {
+        await sql.updateSQLVersion();
+    }
     dump(`Socket.IO server running at https://${socketIOHost}:${socketIOPort}`);
     serverRunning = true;
     sql.qry(serverSQLPool, "UPDATE `user_auth` SET `online` = 'N', `open_instances` = 0", [], function() {});
