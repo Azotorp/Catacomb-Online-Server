@@ -141,13 +141,19 @@ io.on("connection", (socket) => {
     });
 
     socket.on("clientReady", async function(clientReadyData) {
+        let playerID = playerData.playerIDs[uuid];
         let newData = await player.newPlayer(io, uuid, playerData, clientReadyData);
-        playerData = {
-            playerIDs: newData.playerIDs,
-            players: newData.players,
-            mapData: newData.mapData,
-            clientData: newData.clientData,
-        };
+        if (newData !== false)
+        {
+            playerData = {
+                playerIDs: newData.playerIDs,
+                players: newData.players,
+                mapData: newData.mapData,
+                clientData: newData.clientData,
+            };
+        } else {
+            player.deletePlayer(io, playerData, playerID);
+        }
     });
 
     socket.on("changeMap", async function(data) {
@@ -261,6 +267,8 @@ io.on("connection", (socket) => {
     socket.on('deRenderMap', function(data) {
         let deRenderTile = data.deRenderTile;
         let id = data.playerID;
+        //if (!misc.isDefined(playerData.mapData[id]))
+            //return;
         for (let i in deRenderTile)
         {
             if (misc.isDefined(playerData.mapData[id][deRenderTile[i]]))

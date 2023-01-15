@@ -141,6 +141,8 @@ async function newPlayer(io, uuid, playerData, clientReadyData)
 
 function deletePlayer(io, playerData, playerID)
 {
+    if (!misc.isDefined(playerData.players[playerID]))
+        return;
     let player = playerData.players[playerID];
     delete playerData.players[playerID];
     delete playerData.mapData[playerID];

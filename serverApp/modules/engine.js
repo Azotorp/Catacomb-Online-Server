@@ -211,7 +211,7 @@ function updatePlayersPos(players, FPS, gridSize, mapData)
 
 function lightRayCast(fov, players, mapData, id, gridSize)
 {
-    let aim = players[id].body.angle + physics.player.body[id].angularVelocity / SETTINGS.physicsLoopFrequency;
+    let aim = players[id].body.angle;// + physics.player.body[id].angularVelocity / SETTINGS.physicsLoopFrequency;
     let origin = {
         x: players[id].body.position[0],
         y: players[id].body.position[1],
@@ -223,9 +223,10 @@ function lightRayCast(fov, players, mapData, id, gridSize)
     };
 
     let flashLightPos = {
-        x: players[id].body.position[0] + Math.cos(aim) * muzzleOffset.length - Math.cos(aim + misc.toRad(90)) * muzzleOffset.width,
-        y: players[id].body.position[1] + Math.sin(aim) * muzzleOffset.length - Math.sin(aim + misc.toRad(90)) * muzzleOffset.width,
+        x: origin.x + Math.cos(aim) * muzzleOffset.length - Math.cos(aim + misc.toRad(90)) * muzzleOffset.width,
+        y: origin.y + Math.sin(aim) * muzzleOffset.length - Math.sin(aim + misc.toRad(90)) * muzzleOffset.width,
     };
+
     let halfFov = fov / 2;
     let lightRayCastPath = [];
     let angle = [];
@@ -241,7 +242,7 @@ function lightRayCast(fov, players, mapData, id, gridSize)
     angle.sort((a, b) => {
         return a - b;
     });
-    let range = 850;
+    let range = 1050;
     for (let a in angle)
     {
         let ad = misc.toDeg(misc.angleDist(angle[a], aim));
@@ -302,6 +303,7 @@ function wallLOSRayCast(players, mapData, id, gridSize)
             }
         }
     }
+    // comment
 
     let rays = 24;
     for (let n = 0; n < rays; n++)
